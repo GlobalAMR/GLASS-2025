@@ -28,7 +28,25 @@ names(EI_AMRdtaAC)
 # 3.1	Participation in GLASS 
 ###################################################################
 
-# Aim of this section is to 
+# Aim of this section is to contextualise AMR data contributed to GLASS, i.e. does passive surveillance
+# result in improving surveillance activities?:
+
+# Participation of countries, territories and areas in GLASS has increased steadily each year 
+# since the initiation of GLASS in 2016. The absolute number of infection isolates with 
+# antibiotic susceptibility test results reported to GLASS has also risen.  
+# However, it is unclear whether reliance on passive surveillance alone has resulted in improved surveillance
+# coverage at national level over time. Specific considerations include: 
+
+# 1) Identify the syndromes and pathogen-antibiotic combinations for which improved surveillance coverage 
+#    may have occurred. 
+# 2) Determine which regions have shown these improvements.  
+# 3) Determine any differences in testing coverage over time among gender groups. 
+
+# Found the below in the visualisation notes, do we want to define thresholds?
+# 1) Show where coverage has increased or not (facilities, facility types, HC utilisation)
+# 2) potentially defining “thresholds” above or below which targeted action 
+#    is needed, and standards to track progress of routine surveillance
+
 
 # 3.2	National AMR surveillance implementation indicators
 ###################################################################
@@ -38,6 +56,10 @@ names(EI_AMRdtaAC)
 
 # 4	GLOBAL AND REGIONAL RESISTANCE TO ANTIBIOTICS
 ###################################################################
+
+# Generate a single global estimate of resistance by using weights to account for 
+# testing coverage and potential bias in the data from each setting
+# Hence also allow for comparison between regions and potentially over time.
 
 # 4.1	Resistance to antibiotics under surveillance in 2022	 
 ###################################################################

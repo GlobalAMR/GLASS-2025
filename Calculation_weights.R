@@ -15,5 +15,16 @@ dirData = "C:/Users/Esther/World Health Organization/GLASS Data Visualization - 
 dirOutput = "C:/Users/Esther/World Health Organization/GLASS Data Visualization - Documents/General/Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables/"
 
 # Load in data
+# Population data
+##############################################################
+
+# GLASS Implementation data
+##############################################################
+
+# Universal health coverage data
+##############################################################
+# Source:
+# https://www.who.int/publications/i/item/9789240080379
+# https://www.who.int/data/gho/data/indicators/indicator-details/GHO/uhc-index-of-service-coverage
 
 
