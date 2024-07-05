@@ -17,7 +17,7 @@ The 2024 GLASS Report is intended for a broad audience, including:
 5) General public: to raise awareness and understanding of AMR and its global implications 
 
 ## 2024 GLASS report - Outline
-Annex 1 – Mapping of figures and tables to provisional GLASS 2024 report table of contents\ 
+Annex 1 – Mapping of figures and tables to provisional GLASS 2024 report table of contents<br/> 
 
 Foreword<br/>
 Acknowledgements<br/>	 
