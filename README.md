@@ -19,8 +19,7 @@ The 2024 GLASS Report is intended for a broad audience, including:
 ## 2024 GLASS report - Outline
 Annex 1 – Mapping of figures and tables to provisional GLASS 2024 report table of contents\ 
 
-Foreword
-##
+Foreword<br/>
 Acknowledgements\	 
 Abbreviations and acronyms\	 
 Summary\	 
