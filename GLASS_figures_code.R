@@ -15,6 +15,30 @@ EI_AMRdtaINT <- read_csv(paste0(dirData,"/Final_Curated_Data_GLASS_2023_EV/EI_AM
 
 names(EI_AMRdtaAC)
 
-###############################
+###################################################################
+# FIGURES
+###################################################################
 
-table(EI_AMRdtaAC$Specimen)
+# 3	GLOBAL AND REGIONAL AMR SURVEILLANCE COVERAGE	 
+###################################################################
+
+# 3.1	Participation in GLASS 
+###################################################################
+
+
+
+# 3.2	National AMR surveillance implementation indicators
+###################################################################
+
+# 3.3	GLASS-AMR surveillance coverage 
+###################################################################
+
+# 4	GLOBAL AND REGIONAL RESISTANCE TO ANTIBIOTICS
+###################################################################
+
+# 4.1	Resistance to antibiotics under surveillance in 2022	 
+###################################################################
+
+# 4.2	Time series of resistance to selected antibiotics, 2017-2022
+###################################################################
+
