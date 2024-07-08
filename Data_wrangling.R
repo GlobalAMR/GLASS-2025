@@ -23,10 +23,29 @@ dirOutput = "C:/Users/Esther/World Health Organization/GLASS Data Visualization 
 
 idata = read.csv(paste0(dirDataNew,"/Implementation Questionnaire_040724_EV.csv"), sep=";")                   # Implementation data
 idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Implementation data
+cdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Countrydta_071123 EV.csv"), sep=",")   # Country data
+
+# AMR data
+adata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_071123 EV.csv"), sep=",")   # Country data
 
 #############################################################
 # CLEAN DATA
 #############################################################
+
+# Country data
+#############################################################
+
+# Countries that reported AST to GLASS
+creport = adata %>% group_by(Iso3) %>%
+  summarise(n_ast = sum(SpecimenIsolateswithAST, na.rm=T))
+
+cdata = cdata %>%mutate(
+  AMR_GLASS_AST = 
+  case_when(
+    Iso3 %in% creport$Iso3 ~ "Yes", 
+    is.na(EnrolledAMR) ~ NA,
+    TRUE ~ "No")
+)
 
 # Implementation data
 #############################################################
@@ -51,19 +70,19 @@ idata = idata %>%
            case_when(ncc_yes_=="Yes" ~ "Established", 
                      ncc_no =="Yes"  ~ "Not established",
                      ncc_in_progress == "Yes"  ~ "Establishment in progress",
-                     ncc_yes_== " " & ncc_no== " " &  ncc_in_progress== " " ~ "Not reported",
+                     ncc_yes_== "" & ncc_no== "" &  ncc_in_progress== "" ~ "Not reported",
                      TRUE ~ NA),
          AMR_NLR = 
             case_when(nlr_yes=="Yes" ~ "Established", 
                       nlr_no =="Yes"  ~ "Not established",
                       nlr_unk == "Yes"  ~ "Unknown",
-                      nlr_yes== " " & nlr_no== " " &  nlr_unk== " " ~ "Not reported",
+                      nlr_yes== "" & nlr_no== "" &  nlr_unk== "" ~ "Not reported",
                       TRUE ~ NA),
          EQA_to_NRL = 
            case_when(nlr_eqa_yes=="Yes" ~ "Established", 
                      nlr_eqa_no =="Yes"  ~ "Not established",
                      nlr_eqa_unk == "Yes"  ~ "Unknown",
-                     nlr_eqa_yes== " " & nlr_eqa_no== " " &  nlr_eqa_unk== " " ~ "Not reported",
+                     nlr_eqa_yes== "" & nlr_eqa_no== "" &  nlr_eqa_unk== "" ~ "Not reported",
                      TRUE ~ NA),
          AMR_AST_standards = 
            case_when(lab_clsi =="Yes" ~ "CLSI", 
@@ -76,6 +95,9 @@ idata = idata %>%
   rename(
     Iso3 = `org unit *`,
     Year = "period"
+  ) %>% 
+  mutate(
+    AMR_GLASS_AST = ifelse(Iso3 %in% creport$Iso3, "Yes", "No")
   )
 
 # table(idata$AMR_NCC,idata$ncc_yes_)
@@ -86,14 +108,21 @@ idata = idata %>%
 # Remove merged variables
 idata = idata %>% select(-c(ncc_yes_, ncc_no, ncc_in_progress, nlr_yes, nlr_no, nlr_unk,
                             nlr_eqa_yes, nlr_eqa_no, nlr_eqa_unk, lab_clsi,lab_eucast,
-                            lab_both, lab_other, lab_unk))
+                            lab_both, lab_other, lab_unk, options, amr_glass_data))
 names(idata)
 
 # Change characters to numbers
-idata[,c(4:8,10:16)] = sapply(idata[,c(4:8,10:16)], function(x) as.numeric(x))
+idata[,c(4:14)] = sapply(idata[,c(4:14)], function(x) as.numeric(x))
 
 describe(idata)
 sapply(idata, function(x) class(x))
 
+# Merge implementation and country data
+idata_country = merge(cdata,idata,by=c("Iso3"), all = T) %>%
+  rename(AMR_GLASS_AST = "AMR_GLASS_AST.x") %>%
+  select(-c(AMR_GLASS_AST.y))
+
+
 # Export data
-write.csv(idata, paste0(dirOutput, "/EI_Implementationdta_080724 EV.csv"))
+write.csv(idata, paste0(dirOutput, "/EI_Implementationdta_080724_EV.csv"))
+write.csv(idata_country, paste0(dirOutput, "/EI_ImplementationCdta_080724_EV.csv"))
