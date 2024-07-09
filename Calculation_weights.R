@@ -49,6 +49,7 @@ im_table1 = table1(~ factor(AMR_NCC)+
                    amr_amr_inpatient_day_number+
                    amr_amr_outpatient_cons_number+
                    amr_glass_acute_care_number+
+                   amr_glass_hospitals_number +
                    amr_glass_outpatient_cons_number+
                    lab_number_data_call+
                    local_lab_eqa_number_data_call| factor(AMR_GLASS_AST), data=idata_country%>%filter(!is.na(AMR_GLASS_AST)))
