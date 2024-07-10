@@ -11,18 +11,17 @@ rm(list=ls())
 pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, 
                table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet)
 
-
 # Locate directories
-dirData = "C:/Users/Esther/World Health Organization/GLASS Data Visualization - Documents/General/Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
-dirDataNew = "C:/Users/Esther/World Health Organization/GLASS Data Visualization - Documents/General/Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
-dirOutput = "C:/Users/Esther/World Health Organization/GLASS Data Visualization - Documents/General/Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables"
+dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
+dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
+dirOutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables"
 
 ##############################################################
 # LOAD IN DATA
 ##############################################################
-pdata = read.csv(paste0(dirData, "/Final_Curated_Data_GLASS_2023_EV/EI_Popdta_071123 EV.csv"), sep=",")       # Population data
-cdata = read.csv(paste0(dirData, "/Final_Curated_Data_GLASS_2023_EV/EI_Countrydta_071123 EV.csv"), sep=",")   # Country data
-sdata = read.csv(paste0(dirData, "/Final_Curated_Data_GLASS_2023_EV/EI_SurveillanceSites_071123 EV.csv"), sep=",") # Surveillance sites
+pdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Popdta_071123 EV.csv"), sep=",")       # Population data
+cdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Countrydta_071123 EV.csv"), sep=",")   # Country data
+sdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_SurveillanceSites_071123 EV.csv"), sep=",") # Surveillance sites
 idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_080724_EV.csv"), sep=",")                   # Implementation data
 idata_old = read.csv(paste0(dirData, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Surveillance sites                   # Implementation data
 
@@ -49,11 +48,12 @@ im_table1 = table1(~ factor(AMR_NCC)+
                    amr_amr_inpatient_day_number+
                    amr_amr_outpatient_cons_number+
                    amr_glass_acute_care_number+
+                   amr_glass_hospitals_number+
                    amr_glass_outpatient_cons_number+
                    lab_number_data_call+
                    local_lab_eqa_number_data_call| factor(AMR_GLASS_AST), data=idata_country%>%filter(!is.na(AMR_GLASS_AST)))
 
-im_table1 # So 78 countries report to GLASS among those that have also filled out the implementation survey
+im_table1 # So 87 countries report to GLASS among those that have also filled out the implementation survey
 table(idata_country$AMR_GLASS_AST,useNA="always") # 97 countries reported to GLASS at least one isolate with AST
 
 write.table(im_table1, paste0(dirOutput,"/Descriptive/im_2024_table1.csv"), col.names = T, row.names=F, append= F, sep=';')

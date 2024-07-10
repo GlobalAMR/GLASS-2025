@@ -13,9 +13,9 @@ pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, strin
 
 
 # Locate directories
-dirDataOld = "C:/Users/Esther/World Health Organization/GLASS Data Visualization - Documents/General/Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
-dirDataNew = "C:/Users/Esther/World Health Organization/GLASS Data Visualization - Documents/General/Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Master_Raw_Data_GLASS_2024"
-dirOutput = "C:/Users/Esther/World Health Organization/GLASS Data Visualization - Documents/General/Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
+dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
+dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Master_Raw_Data_GLASS_2024"
+dirOutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
 
 ##############################################################
 # LOAD IN DATA
@@ -36,8 +36,9 @@ adata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdta
 #############################################################
 
 # Countries that reported AST to GLASS
-creport = adata %>% group_by(Iso3) %>%
-  summarise(n_ast = sum(SpecimenIsolateswithAST, na.rm=T))
+creport = adata %>% group_by(Iso3, Year) %>%
+  summarise(n_ast = sum(SpecimenIsolateswithAST, na.rm=T)) %>% 
+  filter(Year == 2021)
 
 cdata = cdata %>%mutate(
   AMR_GLASS_AST = 
@@ -126,3 +127,4 @@ idata_country = merge(cdata,idata,by=c("Iso3"), all = T) %>%
 # Export data
 write.csv(idata, paste0(dirOutput, "/EI_Implementationdta_080724_EV.csv"))
 write.csv(idata_country, paste0(dirOutput, "/EI_ImplementationCdta_080724_EV.csv"))
+
