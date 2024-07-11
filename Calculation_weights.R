@@ -53,7 +53,7 @@ im_table1 = table1(~ factor(AMR_NCC)+
                    amr_glass_inpatient_day_number+
                    amr_glass_outpatient_cons_number+
                    lab_number_data_call+
-                   local_lab_eqa_number_data_call| factor(AMR_GLASS_AST), data=idata_country%>%filter(!is.na(AMR_GLASS_AST)&EnrollmentYearAMR<"2023"))
+                   local_lab_eqa_number_data_call| factor(AMR_GLASS_AST), data=idata_country%>%filter(!is.na(EnrolledAMR)&EnrollmentYearAMR<"2023"))
 
 im_table1 # So 87 countries report to GLASS among those that have also filled out the implementation survey
 table(idata_country$AMR_GLASS_AST,useNA="always") # 87 countries reported to GLASS at least one isolate with AST
