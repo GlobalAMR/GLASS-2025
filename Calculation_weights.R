@@ -23,12 +23,12 @@ pdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Popdta
 cdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Countrydta_071123 EV.csv"), sep=",")   # Country data
 sdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_SurveillanceSites_071123 EV.csv"), sep=",") # Surveillance sites
 idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_080724_EV.csv"), sep=",")                   # Implementation data
-idata_old = read.csv(paste0(dirData, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Surveillance sites                   # Implementation data
+idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Surveillance sites                   # Implementation data
 
 idata_country = read.csv(paste0(dirDataNew,"/EI_ImplementationCdta_080724_EV.csv"), sep=",")                   # Implementation data
 
 # AMR data
-adata = read.csv(paste0(dirData, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_071123 EV.csv"), sep=",")   # Country AMR data
+adata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_071123 EV.csv"), sep=",")   # Country AMR data
 
 # DESCRIBE DATA
 ##############################################################
@@ -37,7 +37,7 @@ adata = read.csv(paste0(dirData, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_
 ##############################################################
 names(idata)
 
-# R0 characteristics among those with four observation rounds
+# Surveillance indicators summary - by AST reporting y/n
 im_table1 = table1(~ factor(AMR_NCC)+ 
                      factor(AMR_NLR)+
                      factor(EQA_to_NRL)+
@@ -49,14 +49,58 @@ im_table1 = table1(~ factor(AMR_NCC)+
                    amr_amr_outpatient_cons_number+
                    amr_glass_acute_care_number+
                    amr_glass_hospitals_number+
+                   amr_glass_inpatient_adm_number+
+                   amr_glass_inpatient_day_number+
                    amr_glass_outpatient_cons_number+
                    lab_number_data_call+
-                   local_lab_eqa_number_data_call| factor(AMR_GLASS_AST), data=idata_country%>%filter(!is.na(AMR_GLASS_AST)))
+                   local_lab_eqa_number_data_call| factor(AMR_GLASS_AST), data=idata_country%>%filter(!is.na(AMR_GLASS_AST)&EnrollmentYearAMR<"2023"))
 
 im_table1 # So 87 countries report to GLASS among those that have also filled out the implementation survey
-table(idata_country$AMR_GLASS_AST,useNA="always") # 97 countries reported to GLASS at least one isolate with AST
+table(idata_country$AMR_GLASS_AST,useNA="always") # 87 countries reported to GLASS at least one isolate with AST
 
-write.table(im_table1, paste0(dirOutput,"/Descriptive/im_2024_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
+# Surveillance indicators summary - by GLASS enrollment == Yes and region
+im_table1_regionGLASS = table1(~ factor(AMR_NCC)+ 
+                            factor(AMR_NLR)+
+                            factor(EQA_to_NRL)+
+                            factor(AMR_AST_standards)+
+                            amr_amr_acute_care_number+
+                            amr_amr_hospitals_number+
+                            amr_amr_inpatient_adm_number+
+                            amr_amr_inpatient_day_number+
+                            amr_amr_outpatient_cons_number+
+                            amr_glass_acute_care_number+
+                            amr_glass_hospitals_number+
+                            amr_glass_inpatient_adm_number+
+                            amr_glass_inpatient_day_number+
+                            amr_glass_outpatient_cons_number+
+                            lab_number_data_call+
+                            local_lab_eqa_number_data_call| factor(WHORegionCode), data=idata_country%>%filter(!is.na(EnrolledAMR)&EnrollmentYearAMR<"2023"))
+
+im_table1_regionGLASS # So 116 countries report to GLASS in 2022 (2023 data call)
+
+# Surveillance indicators summary - by AST reporting == Yes and region
+im_table1_regionAST = table1(~ factor(AMR_NCC)+ 
+                     factor(AMR_NLR)+
+                     factor(EQA_to_NRL)+
+                     factor(AMR_AST_standards)+
+                     amr_amr_acute_care_number+
+                     amr_amr_hospitals_number+
+                     amr_amr_inpatient_adm_number+
+                     amr_amr_inpatient_day_number+
+                     amr_amr_outpatient_cons_number+
+                     amr_glass_acute_care_number+
+                     amr_glass_hospitals_number+
+                     amr_glass_inpatient_adm_number+
+                     amr_glass_inpatient_day_number+
+                     amr_glass_outpatient_cons_number+
+                     lab_number_data_call+
+                     local_lab_eqa_number_data_call| factor(WHORegionCode), data=idata_country%>%filter(!is.na(AMR_GLASS_AST)& AMR_GLASS_AST=="Yes" &EnrollmentYearAMR<"2023"))
+
+im_table1_regionAST # So 87 countries report to GLASS among those that have also filled out the implementation survey
+
+write.table(im_table1, paste0(dirOutput,"/Descriptive/im_2023_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
+write.table(im_table1_regionGLASS, paste0(dirOutput,"/Descriptive/im_regionGLASS_2023_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
+write.table(im_table1_regionAST, paste0(dirOutput,"/Descriptive/im_regionAST_2023_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
 
 # Population data
 ##############################################################

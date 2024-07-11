@@ -45,8 +45,12 @@ cdata = cdata %>%mutate(
   case_when(
     Iso3 %in% creport$Iso3 ~ "Yes", 
     is.na(EnrolledAMR) ~ NA,
-    TRUE ~ "No")
-)
+    TRUE ~ "No"),
+  EnrollmentDateAMR = as.Date(EnrollmentDateAMR, format= "%d/%m/%Y"),
+  EnrollmentDateAMC = as.Date(EnrollmentDateAMC, format= "%d/%m/%Y"),
+  EnrollmentYearAMR = year(EnrollmentDateAMR),
+  EnrollmentYearAMC = year(EnrollmentDateAMC),
+) %>% select(-c("X.1","X.2", "X"))
 
 # Implementation data
 #############################################################
