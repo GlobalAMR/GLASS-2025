@@ -15,6 +15,10 @@ pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, strin
 dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
 dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
 dirOutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables"
+dirOutputCheck = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables/2021/"
+# Load in functions
+source("./GLASS_functions.R")
+
 
 ##############################################################
 # LOAD IN DATA
@@ -32,6 +36,16 @@ adataAC = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRd
 adataDM = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaDM_071123 EV.csv"), sep=",")   # Country AMR data
 adataNT = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaINT_071123 EV.csv"), sep=",")   # Country AMR data
 
+# List of drug bug combinations
+dbdata = read_excel(paste0(dirDataNew, "/updated_summary_dbc_longformat.xlsx"), sheet=1)
+
+# rrates 2021
+rrates2021 = read_excel(paste0(dirOutputCheck, "/rrates_2021_75percentile.xlsx")) 
+rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
+  Q1 = as.numeric(Q1),
+  Q3 = as.numeric(Q3),
+  median = as.numeric(median)
+)
 
 ##############################################################
 # PREAMBLE
@@ -45,10 +59,30 @@ cdata = cdata %>% select(-c(X, X.1,X.2))
 # AMR data
 ##############################################################
 # Link country data
-adataAC = left_join(adataAC, cdata, by="Iso3") %>% select(-c())
+adataAC = left_join(adataAC, pdata, by=c("Iso3", "Year"))
 
-# DESCRIBE DATA
 ##############################################################
+## DESCRIPTIVES
+##############################################################
+
+# GLASS AMR Country data
+##############################################################
+
+# Countries that reported
+creport = unique(adataAC$Iso3[which(adataAC$SpecimenIsolateswithAST>1)])
+
+# GLASS Surveillance sites
+##############################################################
+
+
+# Universal health coverage data
+##############################################################
+# Source:
+# https://www.who.int/publications/i/item/9789240080379
+# https://www.who.int/data/gho/data/indicators/indicator-details/GHO/uhc-index-of-service-coverage
+
+
+# Health Quality and Safety Index (IHME data)
 
 # GLASS Implementation data
 ##############################################################
@@ -119,36 +153,88 @@ write.table(im_table1, paste0(dirOutput,"/Descriptive/im_2023_table1.csv"), col.
 write.table(im_table1_regionGLASS, paste0(dirOutput,"/Descriptive/im_regionGLASS_2023_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
 write.table(im_table1_regionAST, paste0(dirOutput,"/Descriptive/im_regionAST_2023_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
 
-# Population data
-##############################################################
-
-
-# GLASS AMR Country data
-##############################################################
-
-# Countries that reported
-creport = unique(adata$Iso3[which(adata$SpecimenIsolateswithAST>1)])
-
-# GLASS Surveillance sites
-##############################################################
-
-
-# Universal health coverage data
-##############################################################
-# Source:
-# https://www.who.int/publications/i/item/9789240080379
-# https://www.who.int/data/gho/data/indicators/indicator-details/GHO/uhc-index-of-service-coverage
-
-
-# Health Quality and Safety Index (IHME data)
-
 
 ###############################################################
-# Account for uncertainty by calculating inverse variance weights
+# ESTIMATES BASED ON inverse variance weights
 ###############################################################
+pn = unique(adataAC$PathogenName)
+
+rrates_norm <- NULL
+
+# Loop through each pathogen in pn - normalised
+for (p in pn) {
+  pathogen <- p
+  r <- ivw(adataAC, dbdata, year = c("2021"), pathogen =pathogen, cor = 1000000,
+           pop = "yes", normalise_w = "yes")
+  rrates_norm <- rbind(rrates_norm, r)  # Append the results to rrates
+}
+
+rrates <- NULL
+# Loop through each pathogen in pn - not normalised
+for (p in pn) {
+  pathogen <- p
+  r <- ivw(adataAC, dbdata, year = c("2021"), pathogen =pathogen, cor = 1000000,
+           pop = "no", normalise_w = "yes")
+  rrates <- rbind(rrates, r)  # Append the results to rrates
+}
+
+# Convert rrates to a data frame - normalised
+rrates_norm <- data.frame(rrates_norm)
+rrates_norm$Year = as.character(rrates_norm$Year)
+rrates_norm$w_normalised = "yes"
+
+# Convert rrates to a data frame - not normalised
+rrates <- data.frame(rrates)
+rrates$w_normalised = "no"
+rrates$Year = as.character(rrates$Year)
+
+# Link normalised and not normalised to compare
+#rrates_norm_notnorm <- rbind(rrates,rrates_norm)
+rrates_norm_notnorm <- full_join(rrates,rrates_norm, by=c("Specimen", "PathogenName", "AbTargets","Year"))
+rrates_norm_notnorm$drugbug = c(1:length(rrates_norm_notnorm$Year))
+# Change to numeric otherwise no linkage possible if not in same format
+rrates2021$Year = as.character(rrates2021$Year)
 
 
-# Display the results
-print(data)
-cat("Combined Resistance Rate (p_IVW):", p_IVW, "\n")
-cat("Variance of Combined Resistance Rate (var_p_IVW):", var_p_IVW, "\n")
+# Link with 2021 data to check - not normalised
+rrates_m <- full_join(rrates, rrates2021) %>% filter(Year =="2021")
+#rrates <- merge(rrates2021 %>% select(Specimen, PathogenName, AbTargets), rrates)
+# Print the final results
+print(rrates_m)
+rrates_m$drugbug = c(1:length(rrates_m$Year))
+
+####################################################################
+# PLOT ESTIMATES
+####################################################################
+
+# Plot not normalised weights vs 2021 median and IQR last year
+p1 = ggplot(rrates_m%>%filter(Specimen=="BLOOD"), aes(x = AbTargets, y = p_IVW, group=drugbug)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper), alpha = 0.1, size=2,width=0.5) +
+  geom_point(aes(x=AbTargets, y=median), size = 3, col="red") +
+  geom_errorbar(aes(ymin = Q1, ymax = Q3), alpha = 0.1, size=2,width=0.5, col="red") +
+  labs(title = "Resistance Rate with 95% Confidence Intervals",
+       x = "Antibiotic Target",
+       y = "Resistance Rate") +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))+
+  facet_wrap(.~ PathogenName , scales = "free_y",ncol=2) + 
+  ggtitle("Inverse variance weighted mean [[95%CI] (black) vs 75% median [IQR] (red)")
+
+# Plot not normalised weights vs normalised weights
+p2 = ggplot(rrates_norm_notnorm%>%filter(Specimen=="BLOOD"), aes(x = AbTargets, y = p_IVW.x, group=drugbug)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = CI_lower.x, ymax = CI_upper.x), alpha = 0.1, size=2,width=0.5) +
+  geom_point(aes(x=AbTargets, y= p_IVW.y), size = 3, col="red") +
+  geom_errorbar(aes(ymin = CI_lower.y, ymax = CI_upper.y), alpha = 0.1, size=2,width=0.5, col="red") +
+  labs(title = "Resistance Rate with 95% Confidence Intervals",
+       x = "Antibiotic Target",
+       y = "Resistance Rate") +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))+
+  facet_wrap(.~ PathogenName , scales = "free_y",ncol=2) + 
+  ggtitle("Inverse variance weighted mean [95%CI] - not normalised (black) vs normalised (red)")
+
+
