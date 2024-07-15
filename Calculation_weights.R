@@ -28,7 +28,24 @@ idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Im
 idata_country = read.csv(paste0(dirDataNew,"/EI_ImplementationCdta_080724_EV.csv"), sep=",")                   # Implementation data
 
 # AMR data
-adata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_071123 EV.csv"), sep=",")   # Country AMR data
+adataAC = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_071123 EV.csv"), sep=",")   # Country AMR data
+adataDM = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaDM_071123 EV.csv"), sep=",")   # Country AMR data
+adataNT = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaINT_071123 EV.csv"), sep=",")   # Country AMR data
+
+
+##############################################################
+# PREAMBLE
+##############################################################
+
+# Country data
+##############################################################
+# Remove empty columns
+cdata = cdata %>% select(-c(X, X.1,X.2))
+
+# AMR data
+##############################################################
+# Link country data
+adataAC = left_join(adataAC, cdata, by="Iso3") %>% select(-c())
 
 # DESCRIBE DATA
 ##############################################################
@@ -123,3 +140,15 @@ creport = unique(adata$Iso3[which(adata$SpecimenIsolateswithAST>1)])
 # https://www.who.int/data/gho/data/indicators/indicator-details/GHO/uhc-index-of-service-coverage
 
 
+# Health Quality and Safety Index (IHME data)
+
+
+###############################################################
+# Account for uncertainty by calculating inverse variance weights
+###############################################################
+
+
+# Display the results
+print(data)
+cat("Combined Resistance Rate (p_IVW):", p_IVW, "\n")
+cat("Variance of Combined Resistance Rate (var_p_IVW):", var_p_IVW, "\n")
