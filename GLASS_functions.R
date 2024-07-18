@@ -3,7 +3,40 @@
 ######################################################
 library(dplyr)
 
-# Calculate inverse variance weights to account for uncertainty
+# Plot raw AMR rates
+######################################################
+plot_amr_map <- function(shapefile, amr_data,
+                         specimen, pathogen_name, antibiotic_name, na_color = "lightgrey") {
+  
+  # Load the shapefile
+  world <- shapefile
+  
+  # Filter the AMR data
+  filtered_rrates <- amr_data %>%
+    filter(Specimen == specimen & PathogenName == pathogen_name & AntibioticName == antibiotic_name)
+  
+  # Ensure the ISO3 column is named correctly for merging
+  world <- world %>%
+    rename(Iso3 = "ISO_A3")
+  
+  # Merge the filtered data with the shapefile data
+  merged_data <- world %>%
+    left_join(filtered_rrates, by = "Iso3")
+  
+  # Plot the map with AMR rates
+  ggplot(data = merged_data) +
+    geom_sf(aes(fill = amr_rate)) +
+    scale_fill_viridis_c(option = "viridis", na.value = na_color) +  # Handle NA values with the specified color
+    theme_minimal() +
+    labs(
+      title = paste("AMR Rates for", specimen),
+      subtitle = paste(pathogen_name, "-", antibiotic_name),
+      fill = "AMR Rate"
+    )
+}
+
+
+# Calculate inverse variance weights to get weighted estimates
 ###################################################################
 # The function can be used to
 # - weight for country size or not by defining pop = Yes or No.
@@ -160,4 +193,54 @@ ivw <- function(ASTdata, dbdata, year, pathogen, cor = 1000000, pop = c("yes", "
   #cat("Weighted 25th-75th Percentile: [", weighted_percentile_25, ", ", weighted_percentile_75, "]\n")
 #}
 
+
+# Use Bayesian regression for estimating AMR rates
+################################################################
       
+# Define the function to fit the model
+fit_amr_model <- function(data_subset, formula, priors) {
+  # Check if the data_subset is not empty
+  if (nrow(data_subset) == 0) {
+    warning("The data subset is empty. Model fitting cannot proceed.")
+    return(NULL)
+  }
+  
+  # Fit the model using brms
+  fit <- brm(formula, 
+             data = data_subset, 
+             family = binomial(), 
+             prior = priors, 
+             chains = 4, 
+             cores = 4, 
+             iter = 2000,
+             control = list(adapt_delta = 0.95))  # Optional control settings
+  
+  # Extract posterior samples for country-specific effects using as_draws_matrix
+  post_samples <- as_draws_matrix(fit)
+  
+  # Extract the overall intercept
+  intercept_samples <- post_samples[, "b_Intercept"]
+  
+  # Extract country-specific random effects
+  country_effects <- post_samples[, grep("^r_Iso3\\[", colnames(post_samples))]
+  
+  # Calculate the log-odds for each country by adding the overall intercept to the random effects
+  log_odds <- sweep(as.matrix(country_effects), 1, intercept_samples, FUN = "+")
+  
+  # Transform log-odds to probabilities
+  resistance_rates <- plogis(log_odds)
+  
+  # Summarize the resistance rates
+  resistance_rates_summary <- apply(resistance_rates, 2, quantile, probs = c(0.025, 0.5, 0.975))
+  
+  # Convert the summary to a dataframe
+  resistance_rates_df <- as.data.frame(t(resistance_rates_summary))
+  colnames(resistance_rates_df) <- c("2.5%", "50%", "97.5%")
+  resistance_rates_df$Country <- rownames(resistance_rates_df)
+  resistance_rates_df$Specimen <- unique(data_subset$Specimen)
+  resistance_rates_df$PathogenName <- unique(data_subset$PathogenName)
+  resistance_rates_df$AntibioticName <- unique(data_subset$AntibioticName)
+  
+  # Return the model fit and the resistance rates summary as a dataframe
+  return(list(fit = fit, summary = resistance_rates_df))
+}

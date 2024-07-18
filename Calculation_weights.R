@@ -31,6 +31,8 @@ idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Im
 
 idata_country = read.csv(paste0(dirDataNew,"/EI_ImplementationCdta_080724_EV.csv"), sep=",")                   # Implementation data
 
+ihmedata = read.csv(paste0(dirDataNew, "/IHME_GBD_2019_HAQ_1990_2019_DATA_Y2022M012D21.csv"), sep=",")
+
 # AMR data
 adataAC = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_071123 EV.csv"), sep=",")   # Country AMR data
 adataDM = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaDM_071123 EV.csv"), sep=",")   # Country AMR data
@@ -55,15 +57,44 @@ rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
 ##############################################################
 # Remove empty columns
 cdata = cdata %>% select(-c(X, X.1,X.2))
+cdata = cdata[order(cdata$Iso3),]
+
+# Universal health coverage data
+##############################################################
+# Source:
+# https://www.who.int/publications/i/item/9789240080379
+# https://www.who.int/data/gho/data/indicators/indicator-details/GHO/uhc-index-of-service-coverage
+
+
+# Health Quality and Safety Index (IHME data)
+haqdata <- ihmedata %>% filter(year_id == 2019, indicator_name=="HAQ Index", haq_index_age_type=="Overall")
+haqdata <- haqdata[order(haqdata$location_name),]
+
+#write.csv(cdata,file=paste0(dirDataNew, "/dataC_ordered.csv"))
+#write.csv(haqdata,file=paste0(dirDataNew, "/dataHAQ_ordered.csv"))
 
 # AMR data
 ##############################################################
-# Link country data
+# Link population data
 adataAC = left_join(adataAC, pdata, by=c("Iso3", "Year"))
+
+# Link country data so we can join HAQ data
+adataAC = left_join(adataAC, cdata, by=c("Iso3"))
+unique(adataAC$CountryTerritoryArea)
+adataAC$CountryTerritoryArea[adataAC$CountryTerritoryArea=="C\xf4te d'Ivoire"] = "Côte d'Ivoire"
+unique(haqdata$location_name)
+
+length(which(unique(adataAC$CountryTerritoryArea) %in%haqdata$location_name))
+
+# Link HAQ data
+adataAC = left_join(adataAC, haqdata, )
 
 ##############################################################
 ## DESCRIPTIVES
 ##############################################################
+
+# Plot HAQ index vs raw isolates
+
 
 # GLASS AMR Country data
 ##############################################################
@@ -75,14 +106,6 @@ creport = unique(adataAC$Iso3[which(adataAC$SpecimenIsolateswithAST>1)])
 ##############################################################
 
 
-# Universal health coverage data
-##############################################################
-# Source:
-# https://www.who.int/publications/i/item/9789240080379
-# https://www.who.int/data/gho/data/indicators/indicator-details/GHO/uhc-index-of-service-coverage
-
-
-# Health Quality and Safety Index (IHME data)
 
 # GLASS Implementation data
 ##############################################################
@@ -182,11 +205,13 @@ for (p in pn) {
 rrates_norm <- data.frame(rrates_norm)
 rrates_norm$Year = as.character(rrates_norm$Year)
 rrates_norm$w_normalised = "yes"
+rrates_norm$AbTargets[rrates_norm$AbTargets=="Cefotaxime "] = "Cefotaxime"
 
 # Convert rrates to a data frame - not normalised
 rrates <- data.frame(rrates)
 rrates$w_normalised = "no"
 rrates$Year = as.character(rrates$Year)
+rrates$AbTargets[rrates$AbTargets=="Cefotaxime "] = "Cefotaxime"
 
 # Link normalised and not normalised to compare
 #rrates_norm_notnorm <- rbind(rrates,rrates_norm)
@@ -237,4 +262,15 @@ p2 = ggplot(rrates_norm_notnorm%>%filter(Specimen=="BLOOD"), aes(x = AbTargets, 
   facet_wrap(.~ PathogenName , scales = "free_y",ncol=2) + 
   ggtitle("Inverse variance weighted mean [95%CI] - not normalised (black) vs normalised (red)")
 
+# Plot figures
+pdf(file = paste0(dirOutput, "./Analyses/pop_ivw_rrates_vs_75med - BLOOD.pdf"), width=10,height=12)
+print(p1)
+dev.off()
 
+# Plot figures
+pdf(file = paste0(dirOutput, "./Analyses/pop_ivw_rrates_norm_vs_notnorm - BLOOD.pdf"), width=10,height=12)
+print(p2)
+dev.off()
+
+write.csv(rrates_norm,file=paste0(dirOutput, "/Analyses/pop_ivw_rates_normalised.csv"))
+write.csv(rrates,file=paste0(dirOutput, "/Analyses/pop_ivw_rates.csv"))
