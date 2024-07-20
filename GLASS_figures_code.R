@@ -292,8 +292,11 @@ multiplot(p3,p4,cols=1)
 # Create list of data.frames
 data_sets = list()
 
-#for(i in 1:nrow(combinations2022)) {
-  for(i in 1:nrow(combinations2022)) {
+# First trial with just E. coli - BLOOD
+combinations2022ec_BLOOD = combinations2022 %>% filter(PathogenName%in% c("Escherichia coli")&
+                                                       Specimen=="BLOOD")
+
+for(i in 1:nrow(combinations2022ec_BLOOD)) {
   data_subset <- adataAC %>% 
     filter(Specimen == combinations2022$Specimen[i],
            PathogenName == combinations2022$PathogenName[i],
@@ -305,6 +308,8 @@ data_sets = list()
 
 }
 
+# For now remove the drug-bug combination that results in no data (i.e. row 7)
+data_sets = data_sets[-7]
 
 # Fit the model to each dataset
 ##########################################################
@@ -339,13 +344,13 @@ model_fits <- lapply(data_sets, function(x) update(fit, newdata = x))
 model_summaries <- lapply(model_fits, function(x) get_fit_model(model_fit=x))
 
 # Plot the posterior means of the intercepts
+#################################################################
 
-
-# Assuming model_summaries is a list of data frames, each containing the summary of a model.
 # Extract the summary of the first model for plotting
 model_estimates = NULL
 
-for(i in 1:nrow(combinations2022)){
+for(i in 1:length(data_sets)){
+  combinations2022 = combinations2022ec_BLOOD
   model_summaries[[i]]$summary$Iso3 <- sub("r_Iso3\\[(.*),Intercept\\]", "\\1", model_summaries[[i]]$summary$Country)
   model_summaries[[i]]$summary$Specimen <- combinations2022$Specimen[i]
   model_summaries[[i]]$summary$PathogenName <- combinations2022$PathogenName[i]
@@ -385,12 +390,12 @@ palette <- brewer.pal(7, "Set1")  # Choose a palette with three colors
 
 # Plot the AMR estimates - per specimen and drug-bug combination seperately
 plots_amr = list()
-for(i in 1:nrow(combinations2022)){
+for(i in 1:length(data_sets)){
   p = plot_model_AMRdb(model_summaries[[i]]$summary.overall)
   plots_amr[[i]] = p
 }
 
-pdf(paste0(dirOutput, "/Analyses/model_AMR_estimates.pdf"), width = 11, height = 8.5) # Open a PDF device for saving
+pdf(paste0(dirOutput, "/Analyses/model_AMR_db.pdf"), width = 8, height = 20) # Open a PDF device for saving
 # Arrange the plots in a grid with 4 plots per row
 do.call(grid.arrange, c(plots_amr, ncol = 2))  # Arrange 4 plots per row
 dev.off()
@@ -411,9 +416,20 @@ for(i in unique(model_estimates_BLOOD$PathogenName)){
   plots_amr_BLOOD_pathogen[[i]] = p
 }
 
-pdf(paste0(dirOutput, "/Analyses/model_AMR_pathogenBLOOD.pdf"), width = 11, height = 8.5) # Open a PDF device for saving
+data_BLOOD = rrates2021 %>% filter(PathogenName=="Escherichia coli" & Specimen=="BLOOD"
+                                   & Year==2021& AbTargets!="Ampicillin") %>%
+  rename(
+    AntibioticName = "AbTargets"
+  )
+
+model_estimates_BLOOD_total = left_join(model_estimates_BLOOD %>% filter(Total=="Yes"), data_BLOOD)
+
+plot_model_AMRpathogen_withdata(model_estimates_BLOOD_total)
+
+pdf(paste0(dirOutput, "/Analyses/model_AMR_pathogenBLOOD.pdf"), width = 11, height = 5) # Open a PDF device for saving
 # Arrange the plots in a grid with 4 plots per row
 do.call(grid.arrange, c(plots_amr_BLOOD_pathogen, ncol = 1))  # Arrange 4 plots per row
+print(plot_model_AMRpathogen_withdata(model_estimates_BLOOD_total))
 dev.off()
 
 

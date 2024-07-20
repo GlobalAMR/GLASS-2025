@@ -135,40 +135,6 @@ ivw <- function(ASTdata, dbdata, year, pathogen, cor = 1000000, pop = c("yes", "
 }
 
 
-  
-# Calculate the weighted median and IQR
-  ########################################################
-  # Sort the data by the estimated resistance rates
-  # data <- data[order(data$p_hat), ]
-  # 
-  # # Calculate cumulative weights
-  # # To find the weighted median, we need to determine the point where the cumulative weight reaches
-  # # or exceeds 50% of the total weight. This is where the weighted median lies.
-  # data$cum_w <- cumsum(data$w)
-  # 
-  # # Calculate total weight
-  # total_w <- sum(data$w)
-  # 
-  # # Calculate the weighted median; total_weight / 2 finds the halfway point of the total weight.
-  # median_index <- which(data$cum_w >= total_w / 2)[1]
-  # weighted_median <- data$p_hat[median_index]
-  # 
-  # # Calculate the 25th percentile
-  # percentile_25_index <- which(data$cum_w <= 0.25 * total_w)[1]
-  # weighted_percentile_25 <- data$p_hat[percentile_25_index]
-  # 
-  # # Calculate the 75th percentile
-  # percentile_75_index <- which(data$cum_w >= 0.75 * total_w)[1]
-  # weighted_percentile_75 <- data$p_hat[percentile_75_index]
-
-
-  # Display the results
-  #print(data)
-  #cat("Weighted Median:", weighted_median, "\n")
-  #cat("Weighted 25th-75th Percentile: [", weighted_percentile_25, ", ", weighted_percentile_75, "]\n")
-#}
-
-
 # Use Bayesian regression for estimating AMR rates
 ################################################################
 
@@ -227,9 +193,6 @@ get_fit_model <- function(model_fit) {
   resistance_rates_df <- as.data.frame(t(resistance_rates_summary))
   colnames(resistance_rates_df) <- c("low2.5", "med50", "high97.5")
   resistance_rates_df$Country <- rownames(resistance_rates_df)
-  #resistance_rates_df$Specimen <- unique(data_subset$Specimen)
-  #resistance_rates_df$PathogenName <- unique(data_subset$PathogenName)
-  #resistance_rates_df$AntibioticName <- unique(data_subset$AntibioticName)
   
   # Return the model fit and the resistance rates summary as a dataframe
   return(list(fit = fit, summary = resistance_rates_df))
@@ -239,14 +202,15 @@ get_fit_model <- function(model_fit) {
 ################################################################################################
 plot_model_AMRdb <- function(summary_data) {
   ggplot(summary_data, aes(x = WHORegionCode, y = med50, col = Total, shape = Total)) +
-    geom_errorbar(aes(ymin = low2.5, ymax = high97.5), width = 1, linewidth = 1) +  # Error bars
+    geom_errorbar(aes(ymin = low2.5, ymax = high97.5), width = 0.2, linewidth = 1) +  # Error bars
     geom_point(size = 4) +  # Points
+    scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
     labs(
       title = paste0("Model Estimates - ", summary_data$Specimen, ": "),
       subtitle = paste0(summary_data$PathogenName, "-", 
                      summary_data$AntibioticName),
       x = "WHO Region",
-      y = "Resistance Rate (Median [95% Credible Interval])"
+      y = "Resistance Rate n (Median [95% Credible Interval])"
     ) +
     theme_minimal() +
     theme(
@@ -266,7 +230,7 @@ plot_model_AMRdb <- function(summary_data) {
 #######################################################################
 plot_model_AMRpathogen <- function(model_estimates) {
   ggplot(model_estimates %>% filter(PathogenName==i), aes(x = AntibioticName, y = med50, col = Total)) +
-  geom_errorbar(aes(ymin = low2.5, ymax = high97.5), width = 0.2, linewidth = 1) +  # Error bars
+  geom_errorbar(aes(ymin = low2.5, ymax = high97.5), width = 0.2, linewidth = 1, size=2) +  # Error bars
   geom_point(size = 4) +  # Points
   scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
   labs(
@@ -289,3 +253,28 @@ plot_model_AMRpathogen <- function(model_estimates) {
   coord_flip()
 }
 
+plot_model_AMRpathogen_withdata <- function(model_estimates) {
+  ggplot(model_estimates %>% filter(PathogenName==i), aes(x = AntibioticName, y = med50)) +
+    geom_errorbar(aes(ymin = low2.5, ymax = high97.5),size=2, width = 0.5, linewidth = 1) +  # Error bars
+    geom_point(size = 4) +  # Points
+    geom_point(aes(x=AntibioticName, y=median/100), size = 4, col="red") +
+    geom_errorbar(aes(ymin = Q1/100, ymax = Q3/100), alpha = 0.1, size=2,width=0.5, col="red") +
+    scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
+    labs(
+      title = paste0("Model estimates: ", model_estimates$PathogenName," - ", model_estimates$Specimen),
+      x = " ",
+      y = "Resistance % - Median (95% Credible Interval)"
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position="none",
+      axis.text.x = element_text(color = "black"),  # X-axis label color
+      axis.title = element_text(size = 12, color = "black"),  # Axis title styling
+      plot.title = element_text(size = 14, face = "bold", color = "darkblue"),  # Plot title styling
+      axis.text = element_text(size = 10),  # Axis text size
+      panel.grid.major = element_line(color = "grey80"),  # Major grid lines
+      panel.grid.minor = element_blank(),  # Remove minor grid lines
+      panel.background = element_rect(fill = "white", color = "black")  # Background styling
+    ) +
+    coord_flip()
+}
