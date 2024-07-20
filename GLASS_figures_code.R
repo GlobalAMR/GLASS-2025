@@ -4,7 +4,7 @@
 rm(list=ls())
 
 # Load R packages
-pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, 
+pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, RColorBrewer,
                table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet, gridExtra, purrr, brms)
 
 # Locate directories
@@ -52,6 +52,14 @@ rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
 
 # Link AMR data with country data
 adataAC = left_join(adataAC, pdata, by=c("Iso3", "Year"))
+
+# Remove space at the end of antibiotic name so can be found in both datasets
+adataAC$AntibioticName <- sub(" $", "", adataAC$AntibioticName)
+
+adataAC = adataAC %>% 
+  mutate(
+    AntibioticName = ifelse(AntibioticName == "Sulfonamides and trimethoprim", "Co-trimoxazole", AntibioticName)
+  )
 
 # Link country data so we can join HAQ data
 adataAC = left_join(adataAC, cdata, by=c("Iso3"))
@@ -125,7 +133,7 @@ head(world_un)
 combinations2022 = dbdata %>% filter(Period == "2016-") %>%
   mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName)) 
 
-rrates <- adataAC %>% filter(Year == "2021") %>%
+rrates <- adataAC %>% filter(Year == 2021) %>%
   group_by(Iso3, Specimen, PathogenName, AntibioticName) %>%
   summarise(amr_rate = Resistant/InterpretableAST,
             BCI_1000000pop = InterpretableAST/TotalPopulation*1000000)
@@ -235,38 +243,73 @@ dev.off() # Close the PDF device
 # AST vs Isolates per 1000000 pop
 ####################################################################################
 
-p1 = ggplot(rrates %>% filter(PathogenName=="Escherichia coli"), aes(x=BCI_1000000pop, y=amr_rate, col=AntibioticName)) +
+p1 = ggplot(rrates %>% filter(PathogenName=="Escherichia coli", AntibioticName!="Doripenem"), aes(x=BCI_1000000pop, y=amr_rate, 
+                                                                     col=AntibioticName,group=AntibioticName)) +
   geom_point(size=2) +  
+  geom_smooth(se=F) +
   facet_wrap(.~ Specimen, ncol=4) +
   xlim(0,1000) +
+  ylim(0,1) + 
   labs(
     title = "AMR Rates for E. coli")
 
-p2 = ggplot(rrates %>% filter(PathogenName=="Klebsiella pneumoniae"), aes(x=BCI_1000000pop, y=amr_rate, col=AntibioticName)) +
+p2 = ggplot(rrates %>% filter(PathogenName=="Klebsiella pneumoniae"), aes(x=BCI_1000000pop, y=amr_rate, 
+                                                                          col=AntibioticName, group=AntibioticName)) +
   geom_point(size=2) +  
+  geom_smooth(se=F) +
   facet_wrap(.~ Specimen, ncol=4) +
   xlim(0,1000) +
+  ylim(0,1) + 
   labs(
     title = "AMR Rates for K. pneumoniae")
 
-p3 = ggplot(rrates %>% filter(PathogenName=="Acinetobacter spp."), aes(x=BCI_1000000pop, y=amr_rate, col=AntibioticName)) +
+p3 = ggplot(rrates %>% filter(PathogenName=="Acinetobacter spp."), aes(x=BCI_1000000pop, y=amr_rate, 
+                                                                       col=AntibioticName, group=AntibioticName)) +
   geom_point(size=2) +  
+  geom_smooth(se=F) +
   facet_wrap(.~ Specimen, ncol=4) +
-  xlim(0,1000) +
+  xlim(0,250) +
+  ylim(0,1) + 
   labs(
     title = "AMR Rates for Acinetobacter spp.")
 
-p4 = ggplot(rrates %>% filter(PathogenName=="Salmonella spp."), aes(x=BCI_1000000pop, y=amr_rate, col=AntibioticName)) +
+p4 = ggplot(rrates %>% filter(PathogenName=="Salmonella spp."), aes(x=BCI_1000000pop, y=amr_rate, col=AntibioticName,
+                                                                    group=AntibioticName)) +
   geom_point(size=2) +  
+  geom_smooth(se=F) +
   facet_wrap(.~ Specimen, ncol=4) +
-  xlim(0,1000) +
+  xlim(0,250) +
+  ylim(0,1) + 
   labs(
     title = "AMR Rates for Salmonella spp.")
 
-multiplot(p1,p2,p3,p4,cols=2)
+multiplot(p1,p2,cols=1)
+multiplot(p3,p4,cols=1)
 
 # Modelled resistance rates 
 ###############################################################
+
+# Create list of data.frames
+data_sets = list()
+
+#for(i in 1:nrow(combinations2022)) {
+  for(i in 1:nrow(combinations2022)) {
+  data_subset <- adataAC %>% 
+    filter(Specimen == combinations2022$Specimen[i],
+           PathogenName == combinations2022$PathogenName[i],
+           AntibioticName == combinations2022$AntibioticName[i],
+           Year == 2021)
+  #print(c(i,combinations2022$Specimen[i], combinations2022$PathogenName[i],combinations2022$AntibioticName[i]))
+  data_sets[[i]] = data_subset
+  #print(head(data_subset))
+
+}
+
+
+# Fit the model to each dataset
+##########################################################
+# First fit model to the first dataset
+#fit <- fit_amr_model(data_sets[[1]], formula, priors)
 
 # Define the model formula
 formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3))
@@ -277,28 +320,146 @@ priors <- c(
   prior(cauchy(0, 1), class = "sd")            # Prior for the standard deviations of the random effects
 )
 
+priors
 
-# Initialize an empty dataframe to store results
-df_fit <- NULL
+# Fit the model using brms
+fit <- brm(formula, 
+           data = data_sets[[1]], 
+           family = binomial(), 
+           prior = priors, 
+           chains = 4, 
+           cores = 4, 
+           iter = 2000,
+           control = list(adapt_delta = 0.95))  # Optional control settings
 
-# Fit the model for each combination
-for(i in 1:nrow(combinations2022)) {
-  data_subset <- adataAC %>%
-    filter(Specimen == combinations2022$Specimen[i],
-           PathogenName == combinations2022$PathogenName[i],
-           AntibioticName == combinations2022$AntibioticName[i])
+# Then update this fit using new data, so model does not need to recompile for each drug bug
+model_fits <- lapply(data_sets, function(x) update(fit, newdata = x))
+
+# Extract summaries from each model fit
+model_summaries <- lapply(model_fits, function(x) get_fit_model(model_fit=x))
+
+# Plot the posterior means of the intercepts
+
+
+# Assuming model_summaries is a list of data frames, each containing the summary of a model.
+# Extract the summary of the first model for plotting
+model_estimates = NULL
+
+for(i in 1:nrow(combinations2022)){
+  model_summaries[[i]]$summary$Iso3 <- sub("r_Iso3\\[(.*),Intercept\\]", "\\1", model_summaries[[i]]$summary$Country)
+  model_summaries[[i]]$summary$Specimen <- combinations2022$Specimen[i]
+  model_summaries[[i]]$summary$PathogenName <- combinations2022$PathogenName[i]
+  model_summaries[[i]]$summary$AntibioticName <- combinations2022$AntibioticName[i]
+  model_summaries[[i]]$summary <- left_join(model_summaries[[i]]$summary,cdata %>% select(Iso3, WHORegionCode, WHORegionName))
   
-  # Fit the model with the subset data
-  fit <- fit_amr_model(data_subset, formula, priors)
-  
-  # Append the summary to the results dataframe
-  if (!is.null(fit)) {
-    df_fit <- rbind(df_fit, fit$summary)
-  }
+  # Create overall and regional values
+  total = model_summaries[[i]]$summary %>%
+    summarise(
+      low2.5 = quantile(low2.5, probs = 0.5),
+      med50 = quantile(med50, probs = 0.5),
+      high97.5 = quantile(high97.5, probs = 0.5),
+      Specimen= unique(Specimen),
+      PathogenName = unique(PathogenName),
+      AntibioticName = unique(AntibioticName),
+      Total = "Yes"
+    )
+  region = model_summaries[[i]]$summary %>% group_by(WHORegionCode) %>%
+    summarise(
+      low2.5 = quantile(low2.5, probs = 0.5),
+      med50 = quantile(med50, probs = 0.5),
+      high97.5 = quantile(high97.5, probs = 0.5),
+      Specimen= unique(Specimen),
+      PathogenName = unique(PathogenName),
+      AntibioticName = unique(AntibioticName),
+      Total = "No"
+    )
+  total$WHORegionCode = "1.ALL"
+  total.region = rbind(total,region)
+  model_summaries[[i]]$summary.overall = total.region
+  model_estimates = rbind(model_estimates,total.region)
 }
 
-# Print the results dataframe
-print(df_fit)
+
+palette <- brewer.pal(7, "Set1")  # Choose a palette with three colors
+
+
+# Plot the AMR estimates - per specimen and drug-bug combination seperately
+plots_amr = list()
+for(i in 1:nrow(combinations2022)){
+  p = plot_model_AMRdb(model_summaries[[i]]$summary.overall)
+  plots_amr[[i]] = p
+}
+
+pdf(paste0(dirOutput, "/Analyses/model_AMR_estimates.pdf"), width = 11, height = 8.5) # Open a PDF device for saving
+# Arrange the plots in a grid with 4 plots per row
+do.call(grid.arrange, c(plots_amr, ncol = 2))  # Arrange 4 plots per row
+dev.off()
+
+# Plot the AMR estimates - per Isolate and pathogen, antibiotics combined
+#################################################################################
+
+# BLOOD
+###############
+
+# Extract  data
+model_estimates_BLOOD = model_estimates %>% filter(Specimen=="BLOOD")
+
+# Create list of plots
+plots_amr_BLOOD_pathogen = list()
+for(i in unique(model_estimates_BLOOD$PathogenName)){
+  p = plot_model_AMRpathogen(model_estimates_BLOOD)
+  plots_amr_BLOOD_pathogen[[i]] = p
+}
+
+pdf(paste0(dirOutput, "/Analyses/model_AMR_pathogenBLOOD.pdf"), width = 11, height = 8.5) # Open a PDF device for saving
+# Arrange the plots in a grid with 4 plots per row
+do.call(grid.arrange, c(plots_amr_BLOOD_pathogen, ncol = 1))  # Arrange 4 plots per row
+dev.off()
+
+
+# URINE
+###############
+
+# Extract  data
+model_estimates_URINE = model_estimates %>% filter(Specimen=="URINE")
+
+# Create list of plots
+plots_amr_URINE_pathogen = list()
+for(i in unique(model_estimates_URINE$PathogenName)){
+  p = plot_model_AMRpathogen(model_estimates_URINE)
+  plots_amr_URINE_pathogen[[i]] = p
+}
+
+
+# STOOL
+##############
+
+# Extract  data
+model_estimates_STOOL = model_estimates %>% filter(Specimen=="STOOL")
+
+# Create list of plots
+plots_amr_STOOL_pathogen = list()
+for(i in unique(model_estimates_STOOL$PathogenName)){
+  p = plot_model_AMRpathogen(model_estimates_STOOL)
+  plots_amr_STOOL_pathogen[[i]] = p
+}
+
+
+# URIGENITAL
+##############
+
+# Extract  data
+model_estimates_URG = model_estimates %>% filter(Specimen=="UROGENITAL")
+
+# Create list of plots
+plots_amr_URG_pathogen = list()
+for(i in unique(model_estimates_URG$PathogenName)){
+  p = plot_model_AMRpathogen(model_estimates_URG)
+  plots_amr_URG_pathogen[[i]] = p
+}
+
+
+
 
 #  4.2	Time series of resistance to selected antibiotics, 2017-2022
 ###################################################################

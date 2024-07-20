@@ -3,7 +3,7 @@
 ######################################################
 library(dplyr)
 
-# Plot raw AMR rates
+# Plot raw AMR rates - by drug-bug combination
 ######################################################
 plot_amr_map <- function(shapefile, amr_data,
                          specimen, pathogen_name, antibiotic_name, na_color = "lightgrey") {
@@ -107,32 +107,7 @@ ivw <- function(ASTdata, dbdata, year, pathogen, cor = 1000000, pop = c("yes", "
       CI_lower <- p_IVW - z_score * SE_IVW
       CI_upper <- p_IVW + z_score * SE_IVW
       
-      # Calculate the weighted median and IQR
-      ########################################################
-      # Sort the data by the estimated resistance rates
-      # data <- data[order(data$p_hat), ]
-      # 
-      # # Calculate cumulative weights
-      # if (normalise_w == "no") {
-      #   data$cum_w <- cumsum(data$w)
-      #   total_w <- sum(data$w)
-      # } else {
-      #   data$cum_w <- cumsum(data$w_norm)
-      #   total_w <- sum(data$w_norm)
-      # }
-      # 
-      # # Calculate the weighted median
-      # median_index <- which(data$cum_w >= total_w / 2)[1]
-      # weighted_median <- data$p_hat[median_index]
-      # 
-      # # Calculate the 25th percentile
-      # percentile_25_index <- which(data$cum_w <= 0.25 * total_w)[1]
-      # weighted_percentile_25 <- data$p_hat[percentile_25_index]
-      # 
-      # # Calculate the 75th percentile
-      # percentile_75_index <- which(data$cum_w >= 0.75 * total_w)[1]
-      # weighted_percentile_75 <- data$p_hat[percentile_75_index]
-      # 
+      
       # Store results
       Year <- year
       Specimen <- s
@@ -196,27 +171,42 @@ ivw <- function(ASTdata, dbdata, year, pathogen, cor = 1000000, pop = c("yes", "
 
 # Use Bayesian regression for estimating AMR rates
 ################################################################
-      
-# Define the function to fit the model
-fit_amr_model <- function(data_subset, formula, priors) {
-  # Check if the data_subset is not empty
-  if (nrow(data_subset) == 0) {
-    warning("The data subset is empty. Model fitting cannot proceed.")
-    return(NULL)
+
+# Function to identify all unique levels for each factor to generate a list of dataframes
+# that ensures that all levels are present in each of the different datasets for each
+# of the drug bug combinations. This as otherwise brm_multiple does not work
+# Hence the model does not need to compile each time.
+
+get_unique_levels <- function(datasets) {
+  combined_levels <- list()
+  
+  for (df in datasets) {
+    for (col in names(df)) {
+      if (is.character(df[[col]])) {
+        combined_levels[[col]] <- union(combined_levels[[col]], unique(df[[col]]))
+      }
+    }
   }
   
-  # Fit the model using brms
-  fit <- brm(formula, 
-             data = data_subset, 
-             family = binomial(), 
-             prior = priors, 
-             chains = 4, 
-             cores = 4, 
-             iter = 2000,
-             control = list(adapt_delta = 0.95))  # Optional control settings
+  return(combined_levels)
+}
+
+# Function to apply unique levels to each factor column
+apply_unique_levels <- function(df, combined_levels) {
+  for (col in names(df)) {
+    if (is.character(df[[col]])) {
+      df[[col]] <- factor(df[[col]], levels = combined_levels[[col]])
+    }
+  }
+  return(df)
+}
+
+
+# Define the function to fit the model
+get_fit_model <- function(model_fit) {
   
   # Extract posterior samples for country-specific effects using as_draws_matrix
-  post_samples <- as_draws_matrix(fit)
+  post_samples <- as_draws_matrix(model_fit)
   
   # Extract the overall intercept
   intercept_samples <- post_samples[, "b_Intercept"]
@@ -235,12 +225,67 @@ fit_amr_model <- function(data_subset, formula, priors) {
   
   # Convert the summary to a dataframe
   resistance_rates_df <- as.data.frame(t(resistance_rates_summary))
-  colnames(resistance_rates_df) <- c("2.5%", "50%", "97.5%")
+  colnames(resistance_rates_df) <- c("low2.5", "med50", "high97.5")
   resistance_rates_df$Country <- rownames(resistance_rates_df)
-  resistance_rates_df$Specimen <- unique(data_subset$Specimen)
-  resistance_rates_df$PathogenName <- unique(data_subset$PathogenName)
-  resistance_rates_df$AntibioticName <- unique(data_subset$AntibioticName)
+  #resistance_rates_df$Specimen <- unique(data_subset$Specimen)
+  #resistance_rates_df$PathogenName <- unique(data_subset$PathogenName)
+  #resistance_rates_df$AntibioticName <- unique(data_subset$AntibioticName)
   
   # Return the model fit and the resistance rates summary as a dataframe
   return(list(fit = fit, summary = resistance_rates_df))
 }
+
+# Plot Model AMR rates by drug bug combination
+################################################################################################
+plot_model_AMRdb <- function(summary_data) {
+  ggplot(summary_data, aes(x = WHORegionCode, y = med50, col = Total, shape = Total)) +
+    geom_errorbar(aes(ymin = low2.5, ymax = high97.5), width = 1, linewidth = 1) +  # Error bars
+    geom_point(size = 4) +  # Points
+    labs(
+      title = paste0("Model Estimates - ", summary_data$Specimen, ": "),
+      subtitle = paste0(summary_data$PathogenName, "-", 
+                     summary_data$AntibioticName),
+      x = "WHO Region",
+      y = "Resistance Rate (Median [95% Credible Interval])"
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position="none",
+      axis.text.x = element_text(color = "black"),  # X-axis label color
+      axis.title = element_text(size = 12, color = "black"),  # Axis title styling
+      plot.title = element_text(size = 14, face = "bold", color = "darkblue"),  # Plot title styling
+      axis.text = element_text(size = 10),  # Axis text size
+      panel.grid.major = element_line(color = "grey80"),  # Major grid lines
+      panel.grid.minor = element_blank(),  # Remove minor grid lines
+      panel.background = element_rect(fill = "white", color = "black")  # Background styling
+    ) +
+    coord_flip()
+}
+
+# Plot AMR rates by Specimen and pathogen
+#######################################################################
+plot_model_AMRpathogen <- function(model_estimates) {
+  ggplot(model_estimates %>% filter(PathogenName==i), aes(x = AntibioticName, y = med50, col = Total)) +
+  geom_errorbar(aes(ymin = low2.5, ymax = high97.5), width = 0.2, linewidth = 1) +  # Error bars
+  geom_point(size = 4) +  # Points
+  scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
+  labs(
+    title = paste0("Model estimates: ", model_estimates$PathogenName," - ", model_estimates$Specimen),
+    x = " ",
+    y = "Resistance % - Median (95% Credible Interval)"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position="none",
+    axis.text.x = element_text(color = "black"),  # X-axis label color
+    axis.title = element_text(size = 12, color = "black"),  # Axis title styling
+    plot.title = element_text(size = 14, face = "bold", color = "darkblue"),  # Plot title styling
+    axis.text = element_text(size = 10),  # Axis text size
+    panel.grid.major = element_line(color = "grey80"),  # Major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+    panel.background = element_rect(fill = "white", color = "black")  # Background styling
+  ) +
+  facet_wrap(.~WHORegionCode, ncol=7) + 
+  coord_flip()
+}
+
