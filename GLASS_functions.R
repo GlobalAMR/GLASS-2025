@@ -200,21 +200,22 @@ get_fit_model <- function(model_fit) {
 
 # Plot Model AMR rates by drug bug combination
 ################################################################################################
-plot_model_AMRdb <- function(summary_data) {
-  ggplot(summary_data, aes(x = WHORegionCode, y = med50, col = Total, shape = Total)) +
-    geom_errorbar(aes(ymin = low2.5, ymax = high97.5), width = 0.2, linewidth = 1) +  # Error bars
+plot_model_AMRdb_region <- function(model_estimates) {
+  ggplot(model_estimates, aes(x = AntibioticName, y = med50, col=WHORegionCode)) +
+    geom_errorbar(aes(ymin = low2.5, ymax = high97.5), alpha=0.2, size=2, width = 0.5) +  # Error bars
     geom_point(size = 4) +  # Points
-    scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
+    #geom_point(aes(x=AntibioticName, y=median/100), size = 4, col="red") +
+    #geom_errorbar(aes(ymin = Q1/100, ymax = Q3/100), alpha = 0.2, size=2,width=0.5, col="red") +
+    scale_color_manual(values = brewer.pal(7, "Set1")) +  # Custom color scale
     labs(
-      title = paste0("Model Estimates - ", summary_data$Specimen, ": "),
-      subtitle = paste0(summary_data$PathogenName, "-", 
-                     summary_data$AntibioticName),
-      x = "WHO Region",
-      y = "Resistance Rate n (Median [95% Credible Interval])"
+      title = paste0("Model estimates: ", model_estimates$PathogenName, " - ",
+                     model_estimates$Specimen),
+      x = " ",
+      y = "Resistance % - Median (95% Credible Interval)"
     ) +
     theme_minimal() +
     theme(
-      legend.position="none",
+      legend.position = "none",
       axis.text.x = element_text(color = "black"),  # X-axis label color
       axis.title = element_text(size = 12, color = "black"),  # Axis title styling
       plot.title = element_text(size = 14, face = "bold", color = "darkblue"),  # Plot title styling
@@ -223,20 +224,22 @@ plot_model_AMRdb <- function(summary_data) {
       panel.grid.minor = element_blank(),  # Remove minor grid lines
       panel.background = element_rect(fill = "white", color = "black")  # Background styling
     ) +
+    facet_wrap(. ~ WHORegionCode, ncol=7) + 
     coord_flip()
 }
 
+
 # Plot AMR rates by Specimen and pathogen
 #######################################################################
-plot_model_AMRpathogen <- function(model_estimates) {
-  ggplot(model_estimates %>% filter(PathogenName==i), aes(x = AntibioticName, y = med50, col = Total)) +
-  geom_errorbar(aes(ymin = low2.5, ymax = high97.5), width = 0.2, linewidth = 1, size=2) +  # Error bars
+plot_model_AMRdb <- function(model_estimates) {
+  ggplot(model_estimates, aes(x = AntibioticName, y = med50, col = Total)) +
+  geom_errorbar(aes(ymin = low2.5, ymax = high97.5), alpha=0.2, width = 0.2, size=2) +  # Error bars
   geom_point(size = 4) +  # Points
   scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
   labs(
     title = paste0("Model estimates: ", model_estimates$PathogenName," - ", model_estimates$Specimen),
     x = " ",
-    y = "Resistance % - Median (95% Credible Interval)"
+    y = "Resistance % \n Median (95% Credible Interval)"
   ) +
   theme_minimal() +
   theme(
@@ -249,19 +252,20 @@ plot_model_AMRpathogen <- function(model_estimates) {
     panel.grid.minor = element_blank(),  # Remove minor grid lines
     panel.background = element_rect(fill = "white", color = "black")  # Background styling
   ) +
-  facet_wrap(.~WHORegionCode, ncol=7) + 
+  facet_wrap(.~Specimen, ncol=2) + 
   coord_flip()
 }
 
-plot_model_AMRpathogen_withdata <- function(model_estimates) {
-  ggplot(model_estimates %>% filter(PathogenName==i), aes(x = AntibioticName, y = med50)) +
-    geom_errorbar(aes(ymin = low2.5, ymax = high97.5),size=2, width = 0.5, linewidth = 1) +  # Error bars
-    geom_point(size = 4) +  # Points
-    geom_point(aes(x=AntibioticName, y=median/100), size = 4, col="red") +
-    geom_errorbar(aes(ymin = Q1/100, ymax = Q3/100), alpha = 0.1, size=2,width=0.5, col="red") +
-    scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
+plot_model_AMRdb_withdata <- function(model_estimates) {
+  ggplot(model_estimates, aes(x = AntibioticName, y = med50)) +
+    geom_errorbar(aes(ymin = low2.5, ymax = high97.5), alpha=0.2, size=2, width = 0.5, col="red") +  # Error bars
+    geom_point(size = 4, col="red") +  # Points
+    geom_point(aes(x=AntibioticName, y=median/100), size = 4, col="black") +
+    geom_errorbar(aes(ymin = Q1/100, ymax = Q3/100), alpha = 0.2, size=2,width=0.5, col="black") +
+    #scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
     labs(
-      title = paste0("Model estimates: ", model_estimates$PathogenName," - ", model_estimates$Specimen),
+      title = paste0("Model estimates (All countries): ", model_estimates$PathogenName, 
+                     " (Estimates = red, Data (75th percentile) = black)"),
       x = " ",
       y = "Resistance % - Median (95% Credible Interval)"
     ) +
@@ -276,5 +280,6 @@ plot_model_AMRpathogen_withdata <- function(model_estimates) {
       panel.grid.minor = element_blank(),  # Remove minor grid lines
       panel.background = element_rect(fill = "white", color = "black")  # Background styling
     ) +
+    facet_wrap(. ~ Specimen, ncol=2) + 
     coord_flip()
 }

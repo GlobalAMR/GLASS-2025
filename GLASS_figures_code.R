@@ -5,7 +5,8 @@ rm(list=ls())
 
 # Load R packages
 pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, RColorBrewer,
-               table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet, gridExtra, purrr, brms)
+               table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet, 
+               gridExtra, purrr, brms, cmdstanr)
 
 # Locate directories
 dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
@@ -50,6 +51,23 @@ rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
 # PREAMBLE
 ##############################################################
 
+# Country data
+##############################################################
+# Remove empty columns
+cdata = cdata %>% select(-c(X, X.1,X.2))
+cdata = cdata[order(cdata$Iso3),]
+
+# Drug-bug combinations for 2023
+#########################################################################
+combinations2022 = dbdata %>% filter(Period %in% c("2016-","2016-2022")) %>%
+  mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName))
+
+# Check if all are present
+present = which(!unique(combinations2022$combined) %in% unique(adataAC$combined))
+unique(combinations2022$combined[present])
+
+
+
 # Link AMR data with country data
 adataAC = left_join(adataAC, pdata, by=c("Iso3", "Year"))
 
@@ -58,7 +76,9 @@ adataAC$AntibioticName <- sub(" $", "", adataAC$AntibioticName)
 
 adataAC = adataAC %>% 
   mutate(
-    AntibioticName = ifelse(AntibioticName == "Sulfonamides and trimethoprim", "Co-trimoxazole", AntibioticName)
+    AntibioticName = ifelse(AntibioticName == "Sulfonamides and trimethoprim", "Co-trimoxazole", AntibioticName),
+    combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName),
+    InReport = ifelse(combined %in% unique(combinations2022$combined), "Yes","No")
   )
 
 # Link country data so we can join HAQ data
@@ -67,12 +87,7 @@ unique(adataAC$CountryTerritoryArea)
 #adataAC$CountryTerritoryArea[adataAC$CountryTerritoryArea=="C\xf4te d'Ivoire"] = "Côte d'Ivoire"
 #unique(haqdata$location_name)
 
-# Country data
-##############################################################
-# Remove empty columns
-cdata = cdata %>% select(-c(X, X.1,X.2))
-cdata = cdata[order(cdata$Iso3),]
-
+table(adataAC$InReport)
 
 ###################################################################
 # FIGURES
@@ -130,8 +145,6 @@ head(world_un)
 #   mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName)) %>%
 #   as.data.frame()
 
-combinations2022 = dbdata %>% filter(Period == "2016-") %>%
-  mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName)) 
 
 rrates <- adataAC %>% filter(Year == 2021) %>%
   group_by(Iso3, Specimen, PathogenName, AntibioticName) %>%
@@ -289,27 +302,33 @@ multiplot(p3,p4,cols=1)
 # Modelled resistance rates 
 ###############################################################
 
+# First trial with just E. coli 
+#combinations2022ec_BLOOD = combinations2022 %>% filter(PathogenName%in% c("Escherichia coli")&
+#                                                       Specimen=="BLOOD")
+ecolidata = adataAC %>% filter(PathogenName == "Escherichia coli" & Year == 2021 & InReport=="Yes")
+unique(ecolidata$combined) # Count as 27 so all should be there
+
 # Create list of data.frames
 data_sets = list()
 
-# First trial with just E. coli - BLOOD
-combinations2022ec_BLOOD = combinations2022 %>% filter(PathogenName%in% c("Escherichia coli")&
-                                                       Specimen=="BLOOD")
-
-for(i in 1:nrow(combinations2022ec_BLOOD)) {
+for(i in 1:length(unique(ecolidata$combined))) {
+  d = ecolidata # Change to data to use
   data_subset <- adataAC %>% 
-    filter(Specimen == combinations2022$Specimen[i],
-           PathogenName == combinations2022$PathogenName[i],
-           AntibioticName == combinations2022$AntibioticName[i],
+    filter(Specimen == d$Specimen[i],
+           PathogenName == d$PathogenName[i],
+           AntibioticName == d$AntibioticName[i],
            Year == 2021)
-  #print(c(i,combinations2022$Specimen[i], combinations2022$PathogenName[i],combinations2022$AntibioticName[i]))
+  print(paste0("Num", i))
+  #print(data_subset[1,])
   data_sets[[i]] = data_subset
+  #print(c(i,combinations2022$Specimen[i], combinations2022$PathogenName[i],combinations2022$AntibioticName[i]))
+  
   #print(head(data_subset))
 
 }
 
-# For now remove the drug-bug combination that results in no data (i.e. row 7)
-data_sets = data_sets[-7]
+# For URINE e. coli doripenem only 10 countries provided isolates
+# We need to make a distinction between no resistance found vs not tested, can we?
 
 # Fit the model to each dataset
 ##########################################################
@@ -338,7 +357,8 @@ fit <- brm(formula,
            control = list(adapt_delta = 0.95))  # Optional control settings
 
 # Then update this fit using new data, so model does not need to recompile for each drug bug
-model_fits <- lapply(data_sets, function(x) update(fit, newdata = x))
+model_fits <- lapply(data_sets, function(x) update(fit, newdata = x,
+                                                   chains=4, cores=4))
 
 # Extract summaries from each model fit
 model_summaries <- lapply(model_fits, function(x) get_fit_model(model_fit=x))
@@ -350,11 +370,11 @@ model_summaries <- lapply(model_fits, function(x) get_fit_model(model_fit=x))
 model_estimates = NULL
 
 for(i in 1:length(data_sets)){
-  combinations2022 = combinations2022ec_BLOOD
+  d = ecolidata # Change to type of bug-drug combinations to look at
   model_summaries[[i]]$summary$Iso3 <- sub("r_Iso3\\[(.*),Intercept\\]", "\\1", model_summaries[[i]]$summary$Country)
-  model_summaries[[i]]$summary$Specimen <- combinations2022$Specimen[i]
-  model_summaries[[i]]$summary$PathogenName <- combinations2022$PathogenName[i]
-  model_summaries[[i]]$summary$AntibioticName <- combinations2022$AntibioticName[i]
+  model_summaries[[i]]$summary$Specimen <- d$Specimen[i]
+  model_summaries[[i]]$summary$PathogenName <- d$PathogenName[i]
+  model_summaries[[i]]$summary$AntibioticName <- d$AntibioticName[i]
   model_summaries[[i]]$summary <- left_join(model_summaries[[i]]$summary,cdata %>% select(Iso3, WHORegionCode, WHORegionName))
   
   # Create overall and regional values
@@ -395,41 +415,34 @@ for(i in 1:length(data_sets)){
   plots_amr[[i]] = p
 }
 
-pdf(paste0(dirOutput, "/Analyses/model_AMR_db.pdf"), width = 8, height = 20) # Open a PDF device for saving
-# Arrange the plots in a grid with 4 plots per row
-do.call(grid.arrange, c(plots_amr, ncol = 2))  # Arrange 4 plots per row
-dev.off()
 
-# Plot the AMR estimates - per Isolate and pathogen, antibiotics combined
+# Plot the AMR estimates - per pathogen, antibiotics combined
 #################################################################################
 
-# BLOOD
+# Escherichia coli
 ###############
 
-# Extract  data
-model_estimates_BLOOD = model_estimates %>% filter(Specimen=="BLOOD")
-
-# Create list of plots
-plots_amr_BLOOD_pathogen = list()
-for(i in unique(model_estimates_BLOOD$PathogenName)){
-  p = plot_model_AMRpathogen(model_estimates_BLOOD)
-  plots_amr_BLOOD_pathogen[[i]] = p
-}
-
-data_BLOOD = rrates2021 %>% filter(PathogenName=="Escherichia coli" & Specimen=="BLOOD"
-                                   & Year==2021& AbTargets!="Ampicillin") %>%
+# Extract raw data rates of 75 percentile countries
+rrates_ecoli = rrates2021 %>% filter(PathogenName=="Escherichia coli", Year==2021) %>%
   rename(
     AntibioticName = "AbTargets"
   )
 
-model_estimates_BLOOD_total = left_join(model_estimates_BLOOD %>% filter(Total=="Yes"), data_BLOOD)
+model_estimates_ecoli_total = left_join(model_estimates %>% filter(Total=="Yes"), rrates_ecoli,
+                                        by=)
 
-plot_model_AMRpathogen_withdata(model_estimates_BLOOD_total)
+p1 = plot_model_AMRdb_withdata(model_estimates_ecoli_total)
+p2 = plot_model_AMRdb_region(model_estimates %>% filter(Specimen=="BLOOD"))
+p3 = plot_model_AMRdb_region(model_estimates %>% filter(Specimen=="URINE"))
 
-pdf(paste0(dirOutput, "/Analyses/model_AMR_pathogenBLOOD.pdf"), width = 11, height = 5) # Open a PDF device for saving
+# Plot E.coli AMR estimates
+pdf(paste0(dirOutput, "/Analyses/model_ecoli_db.pdf"), width = 11, height = 5) # Open a PDF device for saving
+print(p1)
+dev.off()
+
+pdf(paste0(dirOutput, "/Analyses/model_ecoli_db_byregion.pdf"), width = 17, height = 6) # Open a PDF device for saving
 # Arrange the plots in a grid with 4 plots per row
-do.call(grid.arrange, c(plots_amr_BLOOD_pathogen, ncol = 1))  # Arrange 4 plots per row
-print(plot_model_AMRpathogen_withdata(model_estimates_BLOOD_total))
+multiplot(p2,p3, cols=1)
 dev.off()
 
 
