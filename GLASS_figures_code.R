@@ -328,6 +328,7 @@ for(i in 1:length(unique(ecolidata$combined))) {
 
 # For URINE e. coli doripenem only 10 countries provided isolates
 # We need to make a distinction between no resistance found vs not tested, can we?
+# Yes, all interpretable ASTs should be ASTs including the 100% susceptible ones
 
 # Fit the model to each dataset
 ##########################################################
@@ -340,7 +341,7 @@ formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3))
 # Define the priors
 priors <- c(
   prior(normal(0, 1), class = "Intercept"),    # Prior for the fixed effects (including intercept)
-  prior(cauchy(0, 1), class = "sd")            # Prior for the standard deviations of the random effects
+  prior(cauchy(0, 1), class = "sd")            # Prior for the standard deviation of the random effect
 )
 
 priors
@@ -419,7 +420,7 @@ for(i in 1:length(data_sets)){
 #################################################################################
 
 # Escherichia coli
-###############
+####################################
 
 # Extract raw data rates of 75 percentile countries
 rrates_ecoli = rrates2021 %>% filter(PathogenName=="Escherichia coli", Year==2021) %>%
