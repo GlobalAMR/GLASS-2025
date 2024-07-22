@@ -201,8 +201,8 @@ get_fit_model <- function(model_fit) {
 # Plot Model AMR rates by drug bug combination
 ################################################################################################
 plot_model_AMRdb_region <- function(model_estimates) {
-  ggplot(model_estimates, aes(x = AntibioticName, y = med50, col=WHORegionCode)) +
-    geom_errorbar(aes(ymin = low2.5, ymax = high97.5), alpha=0.2, size=2, width = 0.5) +  # Error bars
+  ggplot(model_estimates, aes(x = AntibioticName, y = med50*100, col=WHORegionCode)) +
+    geom_errorbar(aes(ymin = low2.5*100, ymax = high97.5*100), alpha=0.2, size=2, width = 0.5) +  # Error bars
     geom_point(size = 4) +  # Points
     #geom_point(aes(x=AntibioticName, y=median/100), size = 4, col="red") +
     #geom_errorbar(aes(ymin = Q1/100, ymax = Q3/100), alpha = 0.2, size=2,width=0.5, col="red") +
@@ -257,15 +257,15 @@ plot_model_AMRdb <- function(model_estimates) {
 }
 
 plot_model_AMRdb_withdata <- function(model_estimates) {
-  ggplot(model_estimates, aes(x = AntibioticName, y = med50)) +
-    geom_errorbar(aes(ymin = low2.5, ymax = high97.5), alpha=0.2, size=2, width = 0.5, col="red") +  # Error bars
+  ggplot(model_estimates, aes(x = AntibioticName, y = med50*100)) +
+    geom_errorbar(aes(ymin = low2.5*100, ymax = high97.5*100), alpha=0.2, size=2, width = 0.5, col="red") +  # Error bars
     geom_point(size = 4, col="red") +  # Points
-    geom_point(aes(x=AntibioticName, y=median/100), size = 4, col="black") +
-    geom_errorbar(aes(ymin = Q1/100, ymax = Q3/100), alpha = 0.2, size=2,width=0.5, col="black") +
+    geom_point(aes(x=AntibioticName, y=median), size = 4, col="black") +
+    geom_errorbar(aes(ymin = Q1, ymax = Q3), alpha = 0.2, size=2,width=0.5, col="black") +
     #scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
     labs(
-      title = paste0("Model estimates (All countries): ", model_estimates$PathogenName, 
-                     " (Estimates = red, Data (75th percentile) = black)"),
+      title = paste0("Model estimates (All countries): ", model_estimates$PathogenName),
+      subtitle = "Data = black; Model = red",
       x = " ",
       y = "Resistance % - Median (95% Credible Interval)"
     ) +

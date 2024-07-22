@@ -151,7 +151,6 @@ rrates <- adataAC %>% filter(Year == 2021) %>%
   summarise(amr_rate = Resistant/InterpretableAST,
             BCI_1000000pop = InterpretableAST/TotalPopulation*1000000)
 
-
 # Resistance per drug-bug per country
 plot_amr_map(shapefile = world_un, 
              amr_data = rrates, 
