@@ -191,7 +191,7 @@ get_fit_model <- function(model_fit) {
   
   # Convert the summary to a dataframe
   resistance_rates_df <- as.data.frame(t(resistance_rates_summary))
-  colnames(resistance_rates_df) <- c("low2.5", "med50", "high97.5")
+  colnames(resistance_rates_df) <- c("low", "med50", "high")
   resistance_rates_df$Country <- rownames(resistance_rates_df)
   
   # Return the model fit and the resistance rates summary as a dataframe
@@ -202,8 +202,11 @@ get_fit_model <- function(model_fit) {
 ################################################################################################
 plot_model_AMRdb_region <- function(model_estimates) {
   ggplot(model_estimates, aes(x = AntibioticName, y = med50*100, col=WHORegionCode)) +
-    geom_errorbar(aes(ymin = low2.5*100, ymax = high97.5*100), alpha=0.2, size=2, width = 0.5) +  # Error bars
+    geom_errorbar(aes(ymin = low25*100, ymax = high75*100), size=2, width = 0.5) +  # Error bars
     geom_point(size = 4) +  # Points
+    geom_point(aes(x=AntibioticName, y=rawAMRmed50*100), size = 4, col="black",alpha=0.2, shape=17) +  # Points
+    geom_errorbar(aes(ymin = rawAMR25*100, ymax = rawAMR75*100), alpha = 0.2, size=2,width=0.5, col="black",
+                  linetype=1) +
     #geom_point(aes(x=AntibioticName, y=median/100), size = 4, col="red") +
     #geom_errorbar(aes(ymin = Q1/100, ymax = Q3/100), alpha = 0.2, size=2,width=0.5, col="red") +
     scale_color_manual(values = brewer.pal(7, "Set1")) +  # Custom color scale
@@ -211,7 +214,7 @@ plot_model_AMRdb_region <- function(model_estimates) {
       title = paste0("Model estimates: ", model_estimates$PathogenName, " - ",
                      model_estimates$Specimen),
       x = " ",
-      y = "Resistance % - Median (95% Credible Interval)"
+      y = "Resistance % - Median [IQR]"
     ) +
     theme_minimal() +
     theme(
@@ -233,13 +236,13 @@ plot_model_AMRdb_region <- function(model_estimates) {
 #######################################################################
 plot_model_AMRdb <- function(model_estimates) {
   ggplot(model_estimates, aes(x = AntibioticName, y = med50, col = Total)) +
-  geom_errorbar(aes(ymin = low2.5, ymax = high97.5), alpha=0.2, width = 0.2, size=2) +  # Error bars
+  geom_errorbar(aes(ymin = low25, ymax = high75), alpha=0.2, width = 0.2, size=2) +  # Error bars
   geom_point(size = 4) +  # Points
   scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
   labs(
     title = paste0("Model estimates: ", model_estimates$PathogenName," - ", model_estimates$Specimen),
     x = " ",
-    y = "Resistance % \n Median (95% Credible Interval)"
+    y = "Resistance % \n Median [IQR]"
   ) +
   theme_minimal() +
   theme(
@@ -258,16 +261,19 @@ plot_model_AMRdb <- function(model_estimates) {
 
 plot_model_AMRdb_withdata <- function(model_estimates) {
   ggplot(model_estimates, aes(x = AntibioticName, y = med50*100)) +
-    geom_errorbar(aes(ymin = low2.5*100, ymax = high97.5*100), alpha=0.2, size=2, width = 0.5, col="red") +  # Error bars
+    geom_point(aes(x=AntibioticName, y=median), size = 4, col="darkblue") +
+    geom_errorbar(aes(ymin = Q1, ymax = Q3), alpha = 0.2, size=2,width=0.5, col="darkblue") +
+    geom_point(aes(x=AntibioticName, y=rawAMRmed50*100), size = 4, col="black") +  # Points
+    geom_errorbar(aes(ymin = rawAMR25*100, ymax = rawAMR75*100), alpha = 0.2, size=2,width=0.5, col="black",
+                  linetype=1) +
+    geom_errorbar(aes(ymin = low25*100, ymax = high75*100), alpha=0.5, size=2, width = 0.5, col="red") +  # Error bars
     geom_point(size = 4, col="red") +  # Points
-    geom_point(aes(x=AntibioticName, y=median), size = 4, col="black") +
-    geom_errorbar(aes(ymin = Q1, ymax = Q3), alpha = 0.2, size=2,width=0.5, col="black") +
     #scale_color_manual(values = brewer.pal(3, "Set1")) +  # Custom color scale
     labs(
-      title = paste0("Model estimates (All countries): ", model_estimates$PathogenName),
-      subtitle = "Data = black; Model = red",
+      title = paste0("Model estimates (All countries): "),
+      subtitle = paste0("Red = Model; \nBlack = Data all; \nBlue = Data 75th perc. countries"),
       x = " ",
-      y = "Resistance % - Median (95% Credible Interval)"
+      y = "Resistance % - Median [IQR]"
     ) +
     theme_minimal() +
     theme(

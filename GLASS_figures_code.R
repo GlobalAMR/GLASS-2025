@@ -6,11 +6,12 @@ rm(list=ls())
 # Load R packages
 pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, RColorBrewer,
                table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet, 
-               gridExtra, purrr, brms, cmdstanr)
+               gridExtra, purrr, brms, cowplot)
 
 # Locate directories
 dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
-dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
+dirDataNewO = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
+dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2024 GLASS REPORT"
 dirOutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables"
 dirOutputCheck = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables/2021/"
 
@@ -21,20 +22,19 @@ source("./multiplot.R")
 ##############################################################
 # LOAD IN DATA
 ##############################################################
-pdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Popdta_071123 EV.csv"), sep=",")       # Population data
-cdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Countrydta_071123 EV.csv"), sep=",")   # Country data
-sdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_SurveillanceSites_071123 EV.csv"), sep=",") # Surveillance sites
+pdata = read.csv(paste0(dirDataNew, "/EI_Popdta_180724_EV.csv"), sep=",")       # Population data
+cdata = read.csv(paste0(dirDataNew, "/EI_Countrydta_180724_EV.csv"), sep=",")   # Country data
+#sdata = read.csv(paste0(dirDataNew, "/EI_SurveillanceSites_180724_EV.csv"), sep=",") # Surveillance sites
 idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_080724_EV.csv"), sep=",")                   # Implementation data
 idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Surveillance sites                   # Implementation data
 
 idata_country = read.csv(paste0(dirDataNew,"/EI_ImplementationCdta_080724_EV.csv"), sep=",")                   # Implementation data
-
-ihmedata = read.csv(paste0(dirDataNew, "/IHME_GBD_2019_HAQ_1990_2019_DATA_Y2022M012D21.csv"), sep=",")
+#ihmedata = read.csv(paste0(dirDataNew, "/IHME_GBD_2019_HAQ_1990_2019_DATA_Y2022M012D21.csv"), sep=",")
 
 # AMR data
-adataAC = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_071123 EV.csv"), sep=",")   # Country AMR data
-adataDM = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaDM_071123 EV.csv"), sep=",")   # Country AMR data
-adataNT = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaINT_071123 EV.csv"), sep=",")   # Country AMR data
+adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_180724_EV.csv"), sep=",")   # Country AMR data
+adataDM = read.csv(paste0(dirDataNew, "/EI_AMRdtaDM_180724_EV.csv"), sep=",")   # Country AMR data
+adataNT = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_180724_EV.csv"), sep=",")   # Country AMR data
 
 # List of drug bug combinations
 dbdata = read_excel(paste0(dirDataNew, "/updated_summary_dbc_longformat.xlsx"), sheet=1)
@@ -148,7 +148,7 @@ head(world_un)
 
 rrates <- adataAC %>% filter(Year == 2021) %>%
   group_by(Iso3, Specimen, PathogenName, AntibioticName) %>%
-  summarise(amr_rate = Resistant/InterpretableAST,
+  reframe(amr_rate = Resistant/InterpretableAST,
             BCI_1000000pop = InterpretableAST/TotalPopulation*1000000)
 
 # Resistance per drug-bug per country
@@ -316,7 +316,17 @@ for(i in 1:length(unique(ecolidata$combined))) {
     filter(Specimen == d$Specimen[i],
            PathogenName == d$PathogenName[i],
            AntibioticName == d$AntibioticName[i],
-           Year == 2021)
+           Year == 2021) %>%
+    group_by(Iso3) %>%
+    reframe(AMRrate = Resistant/InterpretableAST,
+            Specimen = d$Specimen[i],
+           PathogenName = d$PathogenName[i],
+           AntibioticName = d$AntibioticName[i],
+           Resistant = Resistant,
+           InterpretableAST = InterpretableAST,
+           TotalPopulation = TotalPopulation,
+           BCI_pop100000 = InterpretableAST/TotalPopulation*100000,
+           Year = 2021)
   print(paste0("Num", i))
   #print(data_subset[1,])
   data_sets[[i]] = data_subset
@@ -336,7 +346,8 @@ for(i in 1:length(unique(ecolidata$combined))) {
 #fit <- fit_amr_model(data_sets[[1]], formula, priors)
 
 # Define the model formula
-formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3))
+formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3)) #
+#formula2 <- bf(Resistant | trials(InterpretableAST) + weights(TotalPopulation) ~ 1 + (1 | Iso3)) # This is weighting by population size
 
 # Define the priors
 priors <- c(
@@ -351,14 +362,13 @@ fit <- brm(formula,
            data = data_sets[[1]], 
            family = binomial(), 
            prior = priors, 
-           chains = 4, 
-           cores = 4, 
-           iter = 2000,
-           control = list(adapt_delta = 0.95))  # Optional control settings
+           chains = 6, 
+           cores = 6, 
+           iter = 2000)
 
 # Then update this fit using new data, so model does not need to recompile for each drug bug
 model_fits <- lapply(data_sets, function(x) update(fit, newdata = x,
-                                                   chains=4, cores=4))
+                                                   chains=6, cores=6))
 
 # Extract summaries from each model fit
 model_summaries <- lapply(model_fits, function(x) get_fit_model(model_fit=x))
@@ -375,30 +385,53 @@ for(i in 1:length(data_sets)){
   model_summaries[[i]]$summary$Specimen <- d$Specimen[i]
   model_summaries[[i]]$summary$PathogenName <- d$PathogenName[i]
   model_summaries[[i]]$summary$AntibioticName <- d$AntibioticName[i]
+  
   model_summaries[[i]]$summary <- left_join(model_summaries[[i]]$summary,cdata %>% select(Iso3, WHORegionCode, WHORegionName))
   
   # Create overall and regional values
   total = model_summaries[[i]]$summary %>%
     summarise(
-      low2.5 = quantile(low2.5, probs = 0.5),
       med50 = quantile(med50, probs = 0.5),
-      high97.5 = quantile(high97.5, probs = 0.5),
-      Specimen= unique(Specimen),
+      low25 = quantile(low25, probs = 0.25),
+      high75 = quantile(high75, probs = 0.75),
+      Specimen = unique(Specimen),
       PathogenName = unique(PathogenName),
       AntibioticName = unique(AntibioticName),
+      CTA_total = length(unique(Iso3)),
       Total = "Yes"
     )
+  #print(total)
+  data_total = d %>% filter(combined == d$combined[i]) %>%
+    summarise(
+      rawAMRmed50 = median(Resistant/InterpretableAST, na.rm = T),
+      rawAMR25 = quantile(Resistant/InterpretableAST, prob=0.25,na.rm = T),
+      rawAMR75 = quantile(Resistant/InterpretableAST, prob=0.75,na.rm = T)
+    )
+  
+  total = cbind(total,data_total)
+  
   region = model_summaries[[i]]$summary %>% group_by(WHORegionCode) %>%
     summarise(
-      low2.5 = quantile(low2.5, probs = 0.5),
       med50 = quantile(med50, probs = 0.5),
-      high97.5 = quantile(high97.5, probs = 0.5),
+      low25 = quantile(low25, probs = 0.5),
+      high75 = quantile(high75, probs = 0.5),
       Specimen= unique(Specimen),
       PathogenName = unique(PathogenName),
       AntibioticName = unique(AntibioticName),
+      CTA_total = length(unique(Iso3)),
       Total = "No"
     )
+  
+  data_region = d %>% filter(combined == d$combined[i]) %>% 
+    group_by(WHORegionCode) %>%
+    summarise(
+      rawAMRmed50 = median(Resistant/InterpretableAST, na.rm = T),
+            rawAMR25 = quantile(Resistant/InterpretableAST, prob=0.25,na.rm = T),
+            rawAMR75 = quantile(Resistant/InterpretableAST, prob=0.75,na.rm = T)
+    )
+  region = left_join(region, data_region)
   total$WHORegionCode = "1.ALL"
+  #total = total[,names(total.region)]
   total.region = rbind(total,region)
   model_summaries[[i]]$summary.overall = total.region
   model_estimates = rbind(model_estimates,total.region)
@@ -406,14 +439,6 @@ for(i in 1:length(data_sets)){
 
 
 palette <- brewer.pal(7, "Set1")  # Choose a palette with three colors
-
-
-# Plot the AMR estimates - per specimen and drug-bug combination seperately
-plots_amr = list()
-for(i in 1:length(data_sets)){
-  p = plot_model_AMRdb(model_summaries[[i]]$summary.overall)
-  plots_amr[[i]] = p
-}
 
 
 # Plot the AMR estimates - per pathogen, antibiotics combined
@@ -428,68 +453,79 @@ rrates_ecoli = rrates2021 %>% filter(PathogenName=="Escherichia coli", Year==202
     AntibioticName = "AbTargets"
   )
 
-model_estimates_ecoli_total = left_join(model_estimates %>% filter(Total=="Yes"), rrates_ecoli,
-                                        by=)
+model_estimates_ecoli_total = left_join(model_estimates %>% filter(Total=="Yes"), rrates_ecoli)
 
-p1 = plot_model_AMRdb_withdata(model_estimates_ecoli_total)
-p2 = plot_model_AMRdb_region(model_estimates %>% filter(Specimen=="BLOOD"))
-p3 = plot_model_AMRdb_region(model_estimates %>% filter(Specimen=="URINE"))
+p1 = plot_model_AMRdb_withdata(model_estimates_ecoli_total%>% filter(Specimen=="BLOOD"))
+p2 = plot_model_AMRdb_withdata(model_estimates_ecoli_total%>% filter(Specimen=="URINE"))
+
+p3 = plot_model_AMRdb_region(model_estimates %>% filter(Specimen=="BLOOD"))
+p4 = plot_model_AMRdb_region(model_estimates %>% filter(Specimen=="URINE"))
 
 # Plot E.coli AMR estimates
-pdf(paste0(dirOutput, "/Analyses/model_ecoli_db.pdf"), width = 11, height = 5) # Open a PDF device for saving
-print(p1)
+pdf(paste0(dirOutput, "/Analyses/model_ecoli_db.pdf"), width = 15, height = 5) # Open a PDF device for saving
+multiplot(p1,p2, cols=2)
 dev.off()
 
 pdf(paste0(dirOutput, "/Analyses/model_ecoli_db_byregion.pdf"), width = 17, height = 6) # Open a PDF device for saving
 # Arrange the plots in a grid with 4 plots per row
-multiplot(p2,p3, cols=1)
+multiplot(p3,p4, cols=1)
 dev.off()
-
-
-# URINE
-###############
-
-# Extract  data
-model_estimates_URINE = model_estimates %>% filter(Specimen=="URINE")
-
-# Create list of plots
-plots_amr_URINE_pathogen = list()
-for(i in unique(model_estimates_URINE$PathogenName)){
-  p = plot_model_AMRpathogen(model_estimates_URINE)
-  plots_amr_URINE_pathogen[[i]] = p
-}
-
-
-# STOOL
-##############
-
-# Extract  data
-model_estimates_STOOL = model_estimates %>% filter(Specimen=="STOOL")
-
-# Create list of plots
-plots_amr_STOOL_pathogen = list()
-for(i in unique(model_estimates_STOOL$PathogenName)){
-  p = plot_model_AMRpathogen(model_estimates_STOOL)
-  plots_amr_STOOL_pathogen[[i]] = p
-}
-
-
-# URIGENITAL
-##############
-
-# Extract  data
-model_estimates_URG = model_estimates %>% filter(Specimen=="UROGENITAL")
-
-# Create list of plots
-plots_amr_URG_pathogen = list()
-for(i in unique(model_estimates_URG$PathogenName)){
-  p = plot_model_AMRpathogen(model_estimates_URG)
-  plots_amr_URG_pathogen[[i]] = p
-}
-
-
 
 
 #  4.2	Time series of resistance to selected antibiotics, 2017-2022
 ###################################################################
 
+# 4.2.1 Resistance incidence by number of samples tested
+###################################################################
+
+# Check completeness
+num_test = adataAC %>% group_by(Year, Iso3) %>%
+  reframe(
+    num.test.total = sum(NumSampledPatients, rm.na=T),
+  )  %>% group_by(Year) %>%
+  reframe(
+    total.missing.tested = sum(is.na(num.test.total)),
+    total.not.missing.tested = sum(!is.na(num.test.total)),
+    prop.missing = round(total.missing.tested/(total.not.missing.tested+total.missing.tested),2)
+  )
+
+num_test_byregion = adataAC %>% group_by(Year, Iso3,WHORegionCode) %>%
+  reframe(
+    num.test.total = sum(NumSampledPatients, rm.na=T),
+  )  %>% group_by(Year, WHORegionCode) %>%
+  reframe(
+    total.missing.tested = sum(is.na(num.test.total)),
+    total.not.missing.tested = sum(!is.na(num.test.total)),
+    prop.missing = round(total.missing.tested/(total.not.missing.tested+total.missing.tested),2)
+  )
+
+View(num_test_byregion)
+
+p1 = ggplot(num_test_byregion, aes(x = WHORegionCode, y = prop.missing*100, fill = WHORegionCode)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "WHO Region Code", y = "% Countries with missing data", title = "% countries with missing data on number of tested patients - by region") +
+  theme_minimal() +
+  theme(
+    legend.position = "none"
+  ) +
+  facet_wrap(. ~ Year)
+
+p2 = ggplot(num_test, aes(x = Year, y = prop.missing*100, fill = factor(Year))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year", y = "% Countries with missing data", title = "% countries with missing data on number of tested patients - Overall") +
+  theme_minimal() + 
+  theme(
+    legend.position = "none"
+  )
+
+pdf(paste0(dirOutput, "/Descriptive/missing_data_n_tested.pdf"), width = 8, height = 8) # Open a PDF device for saving
+multiplot(p2, p1)
+dev.off()
+
+------------------------------------------------------------
+# Decided that number tested is not complete enough
+------------------------------------------------------------
+  
+ 
+# Resistance map with bubbles for Specimen and Pathogen
+#######################################################################
