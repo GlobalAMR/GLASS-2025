@@ -5,28 +5,43 @@
 # Author: Esther van Kleef
 # Date created: 8 July 2024
 # Date latest update: 8 July 2024
-
 rm(list=ls())
-# Load R packages
-pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, 
-               table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet)
 
+# Load R packages
+pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, RColorBrewer,
+               table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet, 
+               gridExtra, purrr, brms, cowplot)
 
 # Locate directories
 dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
-dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Master_Raw_Data_GLASS_2024"
-dirOutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
+dirDataNewO = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Final_Curated_Data_GLASS_2024"
+dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2024 GLASS REPORT"
+dirOutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables"
+dirOutputCheck = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables/2021/"
+
+# Load in functions
+source("./GLASS_functions.R")
+source("./multiplot.R")
 
 ##############################################################
 # LOAD IN DATA
 ##############################################################
+pdata = read.csv(paste0(dirDataNew, "/EI_Popdta_180724_EV.csv"), sep=",")       # Population data
+pdataF_raw = readxl::read_xlsx(paste0(dirDataNew, "/UN_pop_raw/EI_Popdta_byagesexMale_180724_EV.xlsx"))
+pdataM_raw = readxl::read_xlsx(paste0(dirDataNew, "/UN_pop_raw/EI_Popdta_byagesexMale_180724_EV.xlsx"))
 
-idata = read.csv(paste0(dirDataNew,"/Implementation Questionnaire_040724_EV.csv"), sep=";")                   # Implementation data
-idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Implementation data
-cdata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Countrydta_071123 EV.csv"), sep=",")   # Country data
+cdata = read.csv(paste0(dirDataNew, "/EI_Countrydta_180724_EV.csv"), sep=",")   # Country data
+#sdata = read.csv(paste0(dirDataNew, "/EI_SurveillanceSites_180724_EV.csv"), sep=",") # Surveillance sites
+idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_080724_EV.csv"), sep=",")                   # Implementation data
+idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Surveillance sites                   # Implementation data
+idata_country = read.csv(paste0(dirDataNew,"/EI_ImplementationCdta_080724_EV.csv"), sep=",")                   # Implementation data
+
+haqidata = read.csv(paste0(dirDataNew, "/HAQI/IHME_GBD_2019_HAQ_1990_2019_DATA_Y2022M012D21.csv"), sep=",")
 
 # AMR data
-adata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdtaAC_071123 EV.csv"), sep=",")   # Country data
+adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_180724_EV.csv"), sep=",")   # Country AMR data
+adataDM = read.csv(paste0(dirDataNew, "/EI_AMRdtaDM_180724_EV.csv"), sep=",")   # Country AMR data
+adataNT = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_180724_EV.csv"), sep=",")   # Country AMR data
 
 #############################################################
 # CLEAN DATA
@@ -36,7 +51,7 @@ adata = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_AMRdta
 #############################################################
 
 # Countries that reported AST to GLASS
-creport = adata %>% group_by(Iso3, Year) %>%
+creport = adataAC %>% group_by(Iso3, Year) %>%
   summarise(n_ast = sum(SpecimenIsolateswithAST, na.rm=T)) %>% 
   filter(Year == 2021)
 
@@ -50,7 +65,96 @@ cdata = cdata %>%mutate(
   EnrollmentDateAMC = as.Date(EnrollmentDateAMC, format= "%d/%m/%Y"),
   EnrollmentYearAMR = year(EnrollmentDateAMR),
   EnrollmentYearAMC = year(EnrollmentDateAMC),
-) %>% select(-c("X.1","X.2", "X"))
+) 
+
+cdata = cdata[order(cdata$Iso3),] %>%
+  mutate(
+    CountryTerritoryArea = case_when(
+      CountryTerritoryArea == "C\xf4te d'Ivoire" ~ "Côte d'Ivoire",
+      TRUE ~ CountryTerritoryArea)
+  )
+
+##############################################################
+# Population data by age and sex
+##############################################################
+
+# Estimates are per 1000, so multiply by 1000
+
+# Female
+pdataF_raw[,4:length(names(pdataF_raw))] = round(sapply(pdataF_raw[,4:length(names(pdataF_raw))], function(x)
+                                                  x*1000),0)
+names(pdataF_raw)[4:length(names(pdataF_raw))] = paste0("F_", names(pdataF_raw[4:length(names(pdataF_raw))]))
+names(pdataF_raw)[4:length(names(pdataF_raw))] = gsub("-", "<", names(pdataF_raw[4:length(names(pdataF_raw))]))
+
+# Convert from wide to long format
+pdataDM_F <- pdataF_raw %>%
+  pivot_longer(
+    cols = starts_with("F_"),  # Select columns to pivot
+    names_to = "DemographicsOrigin",      # Name for the new column that will hold the names of the original columns
+    values_to = "TotalPopulation"          # Name for the new column that will hold the values
+  )
+
+
+# Male
+pdataM_raw[,4:length(names(pdataM_raw))] = round(sapply(pdataM_raw[,4:length(names(pdataM_raw))], function(x)
+  x*1000),0)
+
+names(pdataM_raw)[4:length(names(pdataM_raw))] = paste0("M_", names(pdataM_raw[4:length(names(pdataM_raw))]))
+names(pdataM_raw)[4:length(names(pdataM_raw))] = gsub("-", "<", names(pdataM_raw[4:length(names(pdataM_raw))]))
+
+# Convert from wide to long format
+pdataDM_M <- pdataM_raw %>%
+  pivot_longer(
+    cols = starts_with("M_"),  # Select columns to pivot
+    names_to = "DemographicsOrigin",      # Name for the new column that will hold the names of the original columns
+    values_to = "TotalPopulation"          # Name for the new column that will hold the values
+  )
+
+
+pdataDM = rbind(pdataDM_F, pdataDM_M) %>%
+  mutate(Id = paste0("Id", Iso3, Year),
+         PopulationSource = "United Nations",
+         PopSourceComments = "WPP2024July") %>%
+  select(Iso3, Id, Year, DemographicsOrigin, TotalPopulation, PopulationSource, PopSourceComments)
+
+# Combine all from French territory and Female and Male data
+pdataDM = pdataDM %>% group_by(DemographicsOrigin, Year) %>%
+   mutate(
+     TotalPopulation = ifelse(Iso3 =="FRA", sum(TotalPopulation[Iso3 %in% c("GUF","GLP","MTQ","MYT","REU","FRA")]), TotalPopulation)
+   ) %>% 
+  filter(!Iso3 %in% c("GUF","GLP","MTQ","MYT","REU")
+         )
+
+# Export data
+write.csv(pdataDM, paste0(dirDataNew, "/EI_PopdtaDM_180724_EV.csv"))
+
+##############################################################
+# Universal health coverage data
+##############################################################
+# Source:
+# https://www.who.int/publications/i/item/9789240080379
+# https://www.who.int/data/gho/data/indicators/indicator-details/GHO/uhc-index-of-service-coverage
+
+
+# Health Quality and Safety Index (IHME data)
+haqidata2019 <- haqidata %>% filter(year_id == 2019, indicator_name=="HAQ Index", haq_index_age_type=="Overall")
+haqidata2019 <- haqidata2019[order(haqidata2019$location_name),] %>%
+  mutate(
+    CountryTerritoryArea = location_name,
+    CountryTerritoryArea = case_when(
+      CountryTerritoryArea == "Netherlands" ~ "Netherlands (Kingdom of the)",
+      CountryTerritoryArea == "Türkiye" ~ "Turkey",
+      CountryTerritoryArea == "United Kingdom" ~ "United Kingdom of Great Britain and Northern Ireland",
+      TRUE ~ CountryTerritoryArea)
+  )
+
+# Few left               
+#"Palestine" = "not recognised by WHO"
+#"Taiwan (Province of China)" = "not regonised by WHO, probably listed as China"
+#"United States Virgin Islands" = "probably listed as US?"
+
+haqidata2019 <- left_join(haqidata2019, cdata, by="CountryTerritoryArea")
+unique(haqidata2019$CountryTerritoryArea[is.na(haqidata2019$Iso3)])
 
 # Implementation data
 #############################################################
