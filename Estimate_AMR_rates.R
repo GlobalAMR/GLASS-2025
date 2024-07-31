@@ -34,16 +34,15 @@ pdataDM = read.csv(paste0(dirDataNew, "/EI_PopdtaDM_180724_EV.csv"), sep=",")   
 cdata = read.csv(paste0(dirDataNew, "/EI_Countrydta_180724_EV.csv"), sep=",")       # Country data
 
 # Surveillance indicator data
-#sdata = read.csv(paste0(dirDataNew, "/EI_SurveillanceSites_180724_EV.csv"), sep=",") # Surveillance sites
 idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_080724_EV.csv"), sep=",")                   # Implementation data
-idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Surveillance sites                   # Implementation data
-idata_country = read.csv(paste0(dirDataNew,"/EI_ImplementationCdta_080724_EV.csv"), sep=",")                   # Implementation data
 
 # HAQI data
-haqidata = read.csv(paste0(dirDataNew, "/HAQI/IHME_GBD_2019_HAQ_1990_2019_DATA_Y2022M012D21.csv"), sep=",")
+haqidata = read.csv(paste0(dirDataNew, "/EI_HAQIdta_080724_EV.csv"), sep=",")
 
 # AMR data
-adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_180724_EV.csv"), sep=",")   # Country AMR data
+adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_pop_180724_EV.csv"), sep=",")   # Country AMR data
+adataAC_ac = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_pop_ABX_adapted_180724_EV.csv"), sep=",")   # Country AMR data
+
 adataDM = read.csv(paste0(dirDataNew, "/EI_AMRdtaDM_180724_EV.csv"), sep=",")   # Country AMR data
 adataNT = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_180724_EV.csv"), sep=",")   # Country AMR data
 
@@ -58,70 +57,94 @@ rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
   median = as.numeric(median)
 )
 
-##############################################################
-# PREAMBLE
-##############################################################
 
-# Country data
-##############################################################
-# Remove empty columns
-#cdata = cdata %>% select(-c(X, X.1,X.2))
-cdata = cdata[order(cdata$Iso3),] %>%
-  mutate(
-    CountryTerritoryArea = case_when(
-      CountryTerritoryArea == "C\xf4te d'Ivoire" ~ "Côte d'Ivoire",
-      TRUE ~ CountryTerritoryArea)
-  )
-
-##############################################################
-# Population data by age and sex
-##############################################################
-
-##############################################################
-# Universal health coverage data
-##############################################################
-# Source:
-# https://www.who.int/publications/i/item/9789240080379
-# https://www.who.int/data/gho/data/indicators/indicator-details/GHO/uhc-index-of-service-coverage
-
-
-# Health Quality and Safety Index (IHME data)
-haqidata2019 <- haqidata %>% filter(year_id == 2019, indicator_name=="HAQ Index", haq_index_age_type=="Overall")
-haqidata2019 <- haqidata2019[order(haqidata2019$location_name),] %>%
-  mutate(
-    CountryTerritoryArea = location_name,
-    CountryTerritoryArea = case_when(
-      CountryTerritoryArea == "Netherlands" ~ "Netherlands (Kingdom of the)",
-      CountryTerritoryArea == "Türkiye" ~ "Turkey",
-      CountryTerritoryArea == "United Kingdom" ~ "United Kingdom of Great Britain and Northern Ireland",
-      TRUE ~ CountryTerritoryArea)
-  )
-
-# Few left               
-#"Palestine" = "not recognised by WHO"
-#"Taiwan (Province of China)" = "not regonised by WHO, probably listed as China"
-#"United States Virgin Islands" = "probably listed as US?"
-
-haqidata2019 <- left_join(haqidata2019, cdata, by="CountryTerritoryArea")
-unique(haqidata2019$CountryTerritoryArea[is.na(haqidata2019$Iso3)])
-
-# AMR data
-##############################################################
-# Link population data
-adataAC = left_join(adataAC, pdata, by=c("Iso3", "Year"))
-
-# Link country data so we can join HAQ data
-adataAC = left_join(adataAC, cdata, by=c("Iso3"))
-unique(adataAC$CountryTerritoryArea)
-
-# Link HAQ data
-adataAC = left_join(adataAC, haqidata2019)
 
 ##############################################################
 ## DESCRIPTIVES
 ##############################################################
 
-# Plot HAQ index vs raw isolates
+# Get testing and AMR rates
+##################################################################
+rrates <- adataAC %>% filter(Year == 2022) %>%
+  group_by(Iso3, Specimen, PathogenName, AntibioticName, InReport) %>%
+  reframe(amr_rate = Resistant/InterpretableAST,
+          BCI_1000000pop = InterpretableAST/TotalPopulation*1000000)
+
+rrates = left_join(rrates, haqidata)
+
+# Check with converted antibiotic names for co-trim and 3rd ceph e. coli and 2nd ceph staph
+rrates_ac <- adataAC_ac %>% filter(Year == 2022) %>%
+  group_by(Iso3, Specimen, PathogenName, AntibioticName, InReport) %>%
+  reframe(amr_rate = Resistant/InterpretableAST,
+          BCI_1000000pop = InterpretableAST/TotalPopulation*1000000)
+
+rrates_ac = left_join(rrates_ac, haqidata)
+
+
+# AST vs Isolates per 1000000 pop
+####################################################################################
+
+p1 = ggplot(rrates %>% filter(PathogenName=="Escherichia coli", InReport=="Yes", 
+                              Specimen=="BLOOD"), aes(x=BCI_1000000pop, y=amr_rate,group=AntibioticName)) +
+  geom_point(size=2, alpha=0.5) +  
+  geom_vline(xintercept=70, linetype=2, col="red", linewidth=0.7) +
+  geom_smooth(col="seagreen") +
+  facet_wrap(.~ AntibioticName, ncol=4, scales=c("free")) +
+  theme_minimal() + 
+  labs(
+    title = "BCI/100 000 vs AMR Rates (E. coli - Blood specimens)",
+    x = "BCI/100 000 population",
+    y = "Resistance %")
+p1
+
+p1_ac = ggplot(rrates_ac %>% filter(PathogenName=="Escherichia coli", InReport=="Yes", 
+                              Specimen=="BLOOD"), aes(x=BCI_1000000pop, y=amr_rate,group=AntibioticName)) +
+  geom_point(size=2, alpha=0.5) +  
+  geom_vline(xintercept=70, linetype=2, col="red", linewidth=0.7) +
+  geom_smooth(col="seagreen") +
+  facet_wrap(.~ AntibioticName, ncol=4, scales=c("free")) +
+  theme_minimal() + 
+  labs(
+    title = "BCI/100 000 vs AMR Rates (E. coli - Blood specimens)",
+    x = "BCI/100 000 population",
+    y = "Resistance %")
+p1_ac
+
+multiplot(p1, p1_ac, cols=2)
+
+p1.haqi= ggplot(rrates %>% filter(PathogenName=="Escherichia coli", AntibioticName!="Doripenem",
+                                  Specimen=="BLOOD"), aes(x=val, y=amr_rate,group=AntibioticName)) +
+  geom_point(size=2, alpha=0.5) +  
+  geom_vline(xintercept=70, linetype=2, col="red", linewidth=0.7) +
+  geom_smooth(col="orange") +
+  facet_wrap(.~ AntibioticName, ncol=4, scales="free_y") +
+  ylim(0,1) + 
+  theme_minimal() +
+  labs(
+    title = "AMR Rates vs HAQI (E. coli - Blood specimen)",
+    x = "HAQI",
+    y = "Resistance %") 
+p1.haqi
+
+p1.haqi.bci= ggplot(rrates %>% filter(PathogenName=="Escherichia coli", AntibioticName!="Doripenem",
+                                      Specimen=="BLOOD"), aes(x=val, y=BCI_1000000pop,group=AntibioticName)) +
+  geom_point(size=2, alpha=0.5) +  
+  geom_vline(xintercept=70, linetype=2, col="red", linewidth=0.7) +
+  geom_hline(yintercept=70, linetype=2, col="red", linewidth=0.7) +
+  geom_smooth(col="blue") +
+  facet_wrap(.~ AntibioticName, ncol=4, scales="free_y") +
+  theme_minimal() +
+  labs(
+    title = "BCI Rates/100 000 vs HAQI (E. coli - Blood specimen)",
+    y = "BCI/100 000",
+    x = "HAQI") 
+p1.haqi.bci
+
+
+pdf(paste0(dirOutput, "/Descriptive/BCI_HQI_ecoli_AMRrates.pdf"), width = 10, height = 25) # Open a PDF device for saving
+# Arrange the plots in a grid with 4 plots per row
+multiplot(p1,p1.haqi.bci, p1.haqi,cols=1)
+dev.off()
 
 
 # GLASS AMR Country data
