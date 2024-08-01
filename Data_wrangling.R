@@ -26,14 +26,19 @@ source("./multiplot.R")
 ##############################################################
 # LOAD IN DATA
 ##############################################################
-pdata = read.csv(paste0(dirDataNew, "/EI_Popdta_180724_EV.csv"), sep=",")       # Population data
+
+# Population data
+pdata = read.csv(paste0(dirDataNew, "/EI_Popdta_180724_EV.csv"), sep=",")       
 pdataF_raw = readxl::read_xlsx(paste0(dirDataNew, "/UN_pop_raw/EI_Popdta_byagesexMale_180724_EV.xlsx"))
 pdataM_raw = readxl::read_xlsx(paste0(dirDataNew, "/UN_pop_raw/EI_Popdta_byagesexMale_180724_EV.xlsx"))
 
-cdata = read.csv(paste0(dirDataNew, "/EI_Countrydta_180724_EV.csv"), sep=",")   # Country data
-#sdata = read.csv(paste0(dirDataNew, "/EI_SurveillanceSites_180724_EV.csv"), sep=",") # Surveillance sites
-idata = read.csv(paste0(dirDataNewO,"/Implementation Questionnaire_AMR_2022_250724.csv"), sep=";")                   # Implementation data
+# Country data
+cdata = read.csv(paste0(dirDataNew, "/EI_Countrydta_180724_EV.csv"), sep=",")
 
+# Surveillance implementation data
+idata = read.csv(paste0(dirDataNewO,"/Implementation Questionnaire_AMR_2022_250724.csv"), sep=";")      
+
+# HAQI data
 haqidata = read.csv(paste0(dirDataNew, "/HAQI_raw/IHME_GBD_2019_HAQ_1990_2019_DATA_Y2022M012D21.csv"), sep=",")
 
 # AMR data
@@ -99,7 +104,7 @@ pdataDM_F <- pdataF_raw %>%
   )%>% 
   mutate(
     Sex = "Female",
-    AgeCat10 = gsub("F_", "", DemographicsOrigin)
+    AgeCat5 = gsub("F_", "", DemographicsOrigin)
   )
 
 
@@ -119,7 +124,7 @@ pdataDM_M <- pdataM_raw %>%
   ) %>% 
   mutate(
     Sex = "Male",
-    AgeCat10 = gsub("M_", "", DemographicsOrigin)
+    AgeCat5 = gsub("M_", "", DemographicsOrigin)
   )
 
 
@@ -127,7 +132,7 @@ pdataDM = rbind(pdataDM_F, pdataDM_M) %>%
   mutate(Id = paste0("Id", Iso3, Year),
          PopulationSource = "United Nations",
          PopSourceComments = "WPP2024July") %>%
-  select(Iso3, Id, Year, DemographicsOrigin, AgeCat10, Sex, TotalPopulation, PopulationSource, PopSourceComments)
+  select(Iso3, Id, Year, DemographicsOrigin, AgeCat5, Sex, TotalPopulation, PopulationSource, PopSourceComments)
 
 # Combine all from French territory and Female and Male data
 pdataDM = pdataDM %>% group_by(DemographicsOrigin, Year) %>%
@@ -137,6 +142,35 @@ pdataDM = pdataDM %>% group_by(DemographicsOrigin, Year) %>%
   filter(!Iso3 %in% c("GUF","GLP","MTQ","MYT","REU")
          )
 
+# Now population data is in 5 years age band but we need them in 10 to link with amr data
+pdataDM = pdataDM %>%
+  group_by(Year, Sex) %>%
+  mutate(
+    AgeCat10 = case_when(
+      AgeCat5 %in% c("0<4") ~ "0<04",
+      AgeCat5 %in% c("5<9", "10<14") ~ "05<14",
+      AgeCat5 %in% c("15<19", "20<24") ~ "15<24",
+      AgeCat5 %in% c("25<29", "30<34") ~ "25<34",
+      AgeCat5 %in% c("35<39", "40<44") ~ "35<44",
+      AgeCat5 %in% c("45<49", "50<54") ~ "45<54",
+      AgeCat5 %in% c("45<49", "50<54") ~ "45<54",
+      AgeCat5 %in% c("55<59", "60<64") ~ "55<64",
+      AgeCat5 %in% c("65<69", "70<74") ~ "65<74",
+      AgeCat5 %in% c("75<79", "80<84") ~ "75<84",
+      AgeCat5 %in% c("85<89", "90<94","95<99","100+") ~ "85+",
+      TRUE ~ NA_character_ 
+    ),
+    Prefix = ifelse(Sex=="Female", "F", "M"),
+    DemographicsOrigin = paste0(Prefix, "_", AgeCat10)
+  )
+
+pdataDM = pdataDM %>% select(-(AgeCat5)) %>%
+  group_by(Iso3, Id, Year, DemographicsOrigin, Sex, AgeCat10, PopulationSource, PopSourceComments) %>%
+  summarise(
+    TotalPopulation = if(all(is.na(TotalPopulation))) NA else sum(TotalPopulation, na.rm = TRUE)
+      )
+  
+  
 # Export data
 write.csv(pdataDM, paste0(dirDataNew, "/EI_PopdtaDM_180724_EV.csv"))
 
@@ -193,8 +227,8 @@ adataAC = adataAC %>%
 )
 
 # Merge Sulfonamides and trimethoprim and Co-trimoxazole, as the former is a class, but just one abx,
-# i.e. Co-trimoxazole. Merging should be done by taking among the countries with both or Sulfonamides and trimethoprim
-# listed, the one with the max isolate count, as there may be overlap.
+# i.e. Co-trimoxazole. Merging should be done by taking among the countries with both or Sulfonamides and trimethoprim as well as Co-trimoxazole
+# the one with the max isolate count, as there may be overlap.
 adataAC_c = adataAC %>% 
   mutate(
     sulf = ifelse(AntibioticName == "Sulfonamides and trimethoprim", "Yes", "No"),
@@ -214,10 +248,6 @@ adataAC_c = adataAC %>%
     UninterpretableAST = max(UninterpretableAST)
   ) %>%
   ungroup() %>%
-  # mutate(
-  #   combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName),
-  #   InReport = ifelse(combined %in% unique(combinations2022$combined), "Yes","No")
-  # ) %>% 
   filter(sulf != "Yes") %>% 
   select(-c("sulf"))
 
@@ -251,14 +281,8 @@ ceph_ecoli_bl = adataAC %>%
     Intermediate = max(Intermediate),
     Resistant = max(Resistant),
     UninterpretableAST = max(UninterpretableAST)
-  ) %>% 
-  ungroup() 
-# %>%
-#   mutate(
-#     combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName),
-#     InReport = ifelse(combined %in% unique(combinations2022$combined), "Yes","No")
-#   ) 
-ceph_ecoli_bl = unique(ceph_ecoli_bl)
+  ) %>%
+  distinct(Iso3, Year, .keep_all = TRUE)
 
 # Check for which countries single abx where missing in 2017 and 2018 but J01DD was there
 single = adataAC %>% 
@@ -293,6 +317,15 @@ adataAC_cb = adataAC_c %>% filter(!(Antibiotic=="J01DD"& Specimen == "BLOOD" & P
 
 adataAC_cb = rbind(adataAC_cb,ceph_ecoli_bl)
 
+# # Checking for duplicates where Antibiotic == "J01DD"
+# duplicates_J01DD <- adataAC_cb %>%
+#   filter(Antibiotic == "J01DD" & Specimen == "BLOOD" & PathogenName == "Escherichia coli") %>%
+#   group_by(Iso3, Year, PathogenName, AntibioticName, Specimen) %>%
+#   filter(n() > 1) # Keep only groups with more than 1 row
+# 
+# # Check if any duplicates were found
+# print(duplicates_J01DD) # 0 duplicates
+
 # Change 2nd generation cephalosporin for S. Aureus in BLOOD to max value in OXA and FOX
 ceph_staph_bl = adataAC %>% 
   filter(Antibiotic %in% c("OXA", "FOX") & Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus") %>%
@@ -312,15 +345,13 @@ ceph_staph_bl = adataAC %>%
     Intermediate = max(Intermediate),
     Resistant = max(Resistant),
     UninterpretableAST = max(UninterpretableAST)
-  ) %>% 
-  ungroup() 
+  ) %>%
+  distinct(Iso3, Year, .keep_all = TRUE)
 # %>%
 #   mutate(
 #     combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName),
 #     InReport = ifelse(combined %in% unique(combinations2022$combined), "Yes","No")
 #   ) 
-
-ceph_staph_bl = unique(ceph_staph_bl)
 
 # Check for which countries single abx where missing in 2017 and 2018 but J01DC was there
 single = adataAC %>% 
@@ -343,11 +374,6 @@ ceph_staph_bl_add = adataAC %>%
            (Year == 2018 & Iso3 %in% countries2018&
               Antibiotic == "J01DC"& Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus") ) %>%
   ungroup()
-# %>%
-#   mutate(
-#     combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName),
-#     InReport = ifelse(combined %in% unique(combinations2022$combined), "Yes","No")
-#   ) 
 
 ceph_staph_bl = rbind(ceph_staph_bl, ceph_staph_bl_add)
 
@@ -355,6 +381,14 @@ adataAC_cb = adataAC_cb %>% filter(!(Antibiotic=="J01DC"& Specimen == "BLOOD" & 
 
 adataAC_cb = rbind(adataAC_cb,ceph_staph_bl)
 
+# Checking for duplicates where Antibiotic == "J01DD"
+# duplicates_J01DC <- adataAC_cb %>%
+#   filter(Antibiotic == "J01CD" & Specimen == "BLOOD" & PathogenName == "Staphylococcus aureus") %>%
+#   group_by(Iso3, Year, PathogenName, AntibioticName, Specimen) %>%
+#   filter(n() > 1) # Keep only groups with more than 1 row
+# 
+# # Check if any duplicates were found
+# print(duplicates_J01DC) # 0 duplicates
 
 
 # Link country data so we can join HAQI data
@@ -372,10 +406,14 @@ write.csv(adataAC, paste0(dirDataNew, "/EI_AMRdtaAC_pop_180724_EV.csv"))
 #############################################################
 # AMR data by age and sex
 #############################################################
+adataNT$DemographicsOrigin2 <- gsub("(?<![0-9])<1(?![0-9])", "0<04", adataNT$DemographicsOrigin, perl = TRUE)
+adataNT$DemographicsOrigin2 <- gsub("01<04", "0<04", adataNT$DemographicsOrigin2)
+adataNT$DemographicsOrigin2 <- gsub("85<", "85+", adataNT$DemographicsOrigin2)
 
 # Generate separate age and sex columns
 adataNT <- adataNT %>%
   mutate(
+    row = c(1:nrow(adataNT)),
     # Extract the prefix before the first underscore
     Prefix = sub("_.*", "", DemographicsOrigin),
     
@@ -388,15 +426,17 @@ adataNT <- adataNT %>%
       TRUE ~ NA_character_  # Default case, if something unexpected appears
     ),
     # Step 1: Remove everything before the first underscore
-    AgeCat10 = sub("^[^_]*_", "", DemographicsOrigin),
+    AgeCat10 = sub("^[^_]*_", "", DemographicsOrigin2),
     AgeCat10 = sub("_.*", "", AgeCat10),
     AgeCat10 = case_when(
       AgeCat10 %in% c("HO", "UnkOrigin", "CO") ~ NA_character_,
+      #AgeCat10 %in% c("<1","01<04") ~ "0<4",
+      #AgeCat10 %in% c("85<") ~ "85+",
       TRUE ~ AgeCat10
     ),
     Origin = sub("^[^_]*_[^_]*_", "", DemographicsOrigin),
     Origin = sub("_.*", "", Origin),
-    Origin= case_when(
+    Origin = case_when(
       Origin == "CO" ~ "Community",
       Origin == "F" ~ NA,
       Origin == "O" ~ NA,
@@ -406,9 +446,201 @@ adataNT <- adataNT %>%
       TRUE ~ NA_character_  # Default case, if something unexpected appears
     )
   )
+     
+# Group by 'DemographicsOrigin' and sum up the selected columns
+adataNT_c <- adataNT %>%
+  group_by(Iso3, Year, DemographicsOrigin2, PathogenName, AntibioticName, Antibiotic, Specimen, AgeCat10, Sex, Origin) %>%
+  summarise(
+    NumSampledPatients = if(all(is.na(NumSampledPatients))) NA else sum(NumSampledPatients, na.rm = TRUE),
+    TotalSpecimenIsolates = if(all(is.na(TotalSpecimenIsolates))) NA else sum(TotalSpecimenIsolates, na.rm = TRUE),
+    SpecimenIsolateswithAST = if(all(is.na(SpecimenIsolateswithAST))) NA else sum(SpecimenIsolateswithAST, na.rm = TRUE),
+    TotalPathogenIsolates = if(all(is.na(TotalPathogenIsolates))) NA else sum(TotalPathogenIsolates, na.rm = TRUE),
+    PathogenIsolateswithAST = if(all(is.na(PathogenIsolateswithAST))) NA else sum(PathogenIsolateswithAST, na.rm = TRUE),
+    TotalASTpathogenAntibiotic = if(all(is.na(TotalASTpathogenAntibiotic))) NA else sum(TotalASTpathogenAntibiotic, na.rm = TRUE),
+    InterpretableAST = if(all(is.na(InterpretableAST))) NA else sum(InterpretableAST, na.rm = TRUE),
+    Susceptible = if(all(is.na(Susceptible))) NA else sum(Susceptible, na.rm = TRUE),
+    Intermediate = if(all(is.na(Intermediate))) NA else sum(Intermediate, na.rm = TRUE),
+    Resistant = if(all(is.na(Resistant))) NA else sum(Resistant, na.rm = TRUE),
+    UninterpretableAST = if(all(is.na(UninterpretableAST))) NA else sum(UninterpretableAST, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  rename(
+    DemographicsOrigin = "DemographicsOrigin2"
+  )
+
+adataNT_c$row = c(1:nrow(adataNT_c))
+
+# Check if same size between the different datasets (i.e. should be 0)
+summarized_data <- adataNT_c %>%
+  group_by(DemographicsOrigin) %>%
+  summarise(TotalSpecimenIsolatesSum = sum(TotalSpecimenIsolates, na.rm = TRUE))
+
+summarized_data2 <- adataNT %>%
+  group_by(DemographicsOrigin) %>%
+  summarise(TotalSpecimenIsolatesSum = sum(TotalSpecimenIsolates, na.rm = TRUE))
+
+# summarized_data %>% filter(DemographicsOrigin%in% c("F_0<04")) %>%
+#   summarise(
+#     n = sum(TotalSpecimenIsolatesSum)
+#   ) - summarized_data2 %>% filter(DemographicsOrigin%in% c("F_<1", "F_01<04")) %>%
+#   summarise(
+#     n = sum(TotalSpecimenIsolatesSum)
+#     ) # Yes!
+  
+
+# Merge Sulfonamides and trimethoprim and Co-trimoxazole, as the former is a class, but just one abx,
+# i.e. Co-trimoxazole. Merging should be done by taking among the countries with both or Sulfonamides and trimethoprim as well as Co-trimoxazole
+# the one with the max isolate count, as there may be overlap.
+adataNT_cb = adataNT_c %>% 
+  mutate(
+    sulf = ifelse(AntibioticName == "Sulfonamides and trimethoprim", "Yes", "No"),
+    AntibioticName = ifelse(AntibioticName == "Sulfonamides and trimethoprim", "Co-trimoxazole", AntibioticName),
+  ) %>% group_by(Iso3, Year, DemographicsOrigin, PathogenName, AntibioticName, Specimen) %>%
+  mutate(
+    NumSampledPatients = max(NumSampledPatients),
+    TotalSpecimenIsolates = max(TotalSpecimenIsolates),
+    SpecimenIsolateswithAST = max(SpecimenIsolateswithAST),
+    TotalPathogenIsolates = max(TotalPathogenIsolates),
+    PathogenIsolateswithAST = max(PathogenIsolateswithAST),
+    TotalASTpathogenAntibiotic = max(TotalASTpathogenAntibiotic),
+    InterpretableAST = max(InterpretableAST),          
+    Susceptible = max(Susceptible),
+    Intermediate = max(Intermediate),
+    Resistant = max(Resistant),
+    UninterpretableAST = max(UninterpretableAST)
+  ) %>%
+  ungroup() %>%
+  filter(sulf != "Yes") %>% 
+  select(-c("sulf"))
+
+# Change 3rd generation cephalosporin for E. coli in BLOOD to max value in CTX, CAZ and CRO
+ceph_ecoli_bl = adataNT_c %>% 
+  filter(Antibiotic %in% c("CTX", "CAZ", "CRO") & Specimen == "BLOOD" & PathogenName=="Escherichia coli") %>%
+  mutate(
+    AntibioticName = "Third-generation cephalosporins",
+    Antibiotic = "J01DD"
+  ) %>% group_by(Iso3, Year,DemographicsOrigin, PathogenName, AntibioticName, Specimen) %>%
+  mutate(
+    NumSampledPatients = max(NumSampledPatients),
+    TotalSpecimenIsolates = max(TotalSpecimenIsolates),
+    SpecimenIsolateswithAST = max(SpecimenIsolateswithAST),
+    TotalPathogenIsolates = max(TotalPathogenIsolates),
+    PathogenIsolateswithAST = max(PathogenIsolateswithAST),
+    TotalASTpathogenAntibiotic = max(TotalASTpathogenAntibiotic),
+    InterpretableAST = max(InterpretableAST),          
+    Susceptible = max(Susceptible),
+    Intermediate = max(Intermediate),
+    Resistant = max(Resistant),
+    UninterpretableAST = max(UninterpretableAST)
+  ) %>%
+  distinct(Iso3, Year,DemographicsOrigin, .keep_all = TRUE)
+
+# Check for which countries single abx where missing in 2017 and 2018 but J01DD was there
+single = adataNT_c %>% 
+  filter(Year %in% c(2017,2018) & Antibiotic %in% c("CTX", "CAZ", "CRO") & Specimen == "BLOOD" & PathogenName=="Escherichia coli")%>%
+  group_by(Iso3, Year, DemographicsOrigin) %>%
+  summarise(n = max(InterpretableAST, na.rm=T))
+
+single3gc = adataNT_c %>% 
+  filter(Year %in% c(2017,2018) & Antibiotic %in% c("J01DD") & Specimen == "BLOOD" & PathogenName=="Escherichia coli")%>%
+  group_by(Iso3, Year, DemographicsOrigin) %>%
+  summarise(n = max(InterpretableAST, na.rm=T))
+
+
+# Join the two to see which ones do not have single 3GC but do have the class 3GC
+total = left_join(single3gc, single, by=c("Iso3",  "Year", "DemographicsOrigin"))
+countries2017 = unique(total$Iso3[is.na(total$n.y) & total$Year==2017])
+countries2018 = unique(total$Iso3[is.na(total$n.y) & total$Year==2018])
+
+ceph_ecoli_bl_add = left_join(total[is.na(total$n.y),] %>% select(-c(n.x,n.y)),adataNT_c) %>% 
+  filter((Year == 2017 & Iso3 %in% countries2017 &
+            Antibiotic == "J01DD"& Specimen == "BLOOD" & PathogenName=="Escherichia coli") | 
+           (Year == 2018 & Iso3 %in% countries2018&
+              Antibiotic == "J01DD"& Specimen == "BLOOD" & PathogenName=="Escherichia coli") )
+
+ceph_ecoli_bl = rbind(ceph_ecoli_bl, ceph_ecoli_bl_add)
+ceph_ecoli_bl = ceph_ecoli_bl[!duplicated(ceph_ecoli_bl$row),]
+
+adataNT_cbc = adataNT_cb %>% filter(!(Antibiotic=="J01DD"& Specimen == "BLOOD" & PathogenName=="Escherichia coli"))
+
+adataNT_cbc = rbind(adataNT_cbc,ceph_ecoli_bl)
+
+# Checking for duplicates where Antibiotic == "J01DD"
+duplicates_J01DD <- adataNT_cb %>%
+   filter(Antibiotic == "J01DD" & Specimen == "BLOOD" & PathogenName == "Escherichia coli") %>%
+   group_by(Iso3, Year, DemographicsOrigin, PathogenName, AntibioticName, Specimen) %>%
+   filter(n() > 1) # Keep only groups with more than 1 row
+
+# Check if any duplicates were found
+print(duplicates_J01DD) # 0 duplicates
+
+# Change 2nd generation cephalosporin for S. Aureus in BLOOD to max value in OXA and FOX
+ceph_staph_bl = adataNT_c %>% 
+  filter(Antibiotic %in% c("OXA", "FOX") & Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus") %>%
+  mutate(
+    AntibioticName = "Second-generation cephalosporins",
+    Antibiotic = "J01DC"
+  ) %>% group_by(Iso3, Year, DemographicsOrigin, PathogenName, AntibioticName, Specimen) %>%
+  mutate(
+    NumSampledPatients = max(NumSampledPatients),
+    TotalSpecimenIsolates = max(TotalSpecimenIsolates),
+    SpecimenIsolateswithAST = max(SpecimenIsolateswithAST),
+    TotalPathogenIsolates = max(TotalPathogenIsolates),
+    PathogenIsolateswithAST = max(PathogenIsolateswithAST),
+    TotalASTpathogenAntibiotic = max(TotalASTpathogenAntibiotic),
+    InterpretableAST = max(InterpretableAST),          
+    Susceptible = max(Susceptible),
+    Intermediate = max(Intermediate),
+    Resistant = max(Resistant),
+    UninterpretableAST = max(UninterpretableAST)
+  ) %>%
+  distinct(Iso3, Year, DemographicsOrigin, .keep_all = TRUE)
+
+# Check for which countries single abx where missing in 2017 and 2018 but J01DC was there
+single = adataNT_c %>% 
+  filter(Year %in% c(2017,2018) & Antibiotic %in% c("OXA", "FOX") & Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus")%>%
+  group_by(Iso3, Year, DemographicsOrigin) %>%
+  summarise(n = max(InterpretableAST, na.rm=T))
+
+single2gc = adataNT %>% 
+  filter(Year %in% c(2017,2018) & Antibiotic %in% c("J01DC") & Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus")%>%
+  group_by(Iso3, Year, DemographicsOrigin) %>%
+  summarise(n = max(InterpretableAST, na.rm=T))
+
+total = left_join(single2gc, single, by=c("Iso3",  "Year", "DemographicsOrigin"))
+countries2017 = unique(total$Iso3[is.na(total$n.y) & total$Year==2017])
+countries2018 = unique(total$Iso3[is.na(total$n.y) & total$Year==2018])
+
+ceph_staph_bl_add = left_join(total[is.na(total$n.y),] %>% select(-c(n.x,n.y)),adataNT_c) %>% 
+  filter((Year == 2017 & Iso3 %in% countries2017 &
+            Antibiotic == "J01DC"& Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus") | 
+           (Year == 2018 & Iso3 %in% countries2018&
+              Antibiotic == "J01DC"& Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus") ) %>%
+  ungroup()
+
+ceph_staph_bl = rbind(ceph_staph_bl, ceph_staph_bl_add)
+ceph_staph_bl = ceph_staph_bl[!duplicated(ceph_staph_bl$row),]
+
+adataNT_cbc = adataNT_cbc %>% filter(!(Antibiotic=="J01DC"& Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus"))
+
+adataNT_cbc = rbind(adataNT_cbc,ceph_staph_bl)
+
+# Checking for duplicates where Antibiotic == "J01DD"
+# duplicates_J01DC <- adataAC_cb %>%
+#   filter(Antibiotic == "J01CD" & Specimen == "BLOOD" & PathogenName == "Staphylococcus aureus") %>%
+#   group_by(Iso3, Year, PathogenName, AntibioticName, Specimen) %>%
+#   filter(n() > 1) # Keep only groups with more than 1 row
+# 
+# # Check if any duplicates were found
+# print(duplicates_J01DC) # 0 duplicates
+
+
+# Link AMR data with country data 
+adataNT_cbc = left_join(adataNT_cbc, pdataDM)
+
 
 # Export data
-write.csv(adataNT, paste0(dirDataNew, "/EI_AMRdtaINT_180724_EV.csv"))
+write.csv(adataNT_cbc, paste0(dirDataNew, "/EI_AMRdtaINT_pop_ABX_adapted_180724_EV.csv"))
 
 
 # Drug-bug combinations for 2023 
