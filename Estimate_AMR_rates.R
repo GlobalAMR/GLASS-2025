@@ -40,11 +40,10 @@ idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_080724_EV.csv"), sep="
 haqidata = read.csv(paste0(dirDataNew, "/EI_HAQIdta_080724_EV.csv"), sep=",")
 
 # AMR data
-adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_pop_180724_EV.csv"), sep=",")   # Country AMR data
-adataAC_ac = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_pop_ABX_adapted_180724_EV.csv"), sep=",")   # Country AMR data
-
+#adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_pop_180724_EV.csv"), sep=",")   # Country AMR data
+adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_pop_ABX_adapted_180724_EV.csv"), sep=",")   # Country AMR data
 adataDM = read.csv(paste0(dirDataNew, "/EI_AMRdtaDM_180724_EV.csv"), sep=",")   # Country AMR data
-adataNT = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_180724_EV.csv"), sep=",")   # Country AMR data
+adataNT = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_pop_ABX_adapted_180724_EV.csv"), sep=",")   # Country AMR data
 
 # List of drug bug combinations
 dbdata = read_excel(paste0(dirDataNew, "/updated_summary_dbc_longformat.xlsx"), sheet=1)
@@ -57,14 +56,17 @@ rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
   median = as.numeric(median)
 )
 
+###################################################################
+# PREAMBLE
+###################################################################
 
-
-##############################################################
+###################################################################
 ## DESCRIPTIVES
-##############################################################
+##################################################################
 
 # Get testing and AMR rates
 ##################################################################
+
 rrates <- adataAC %>% filter(Year == 2022) %>%
   group_by(Iso3, Specimen, PathogenName, AntibioticName, InReport) %>%
   reframe(amr_rate = Resistant/InterpretableAST,
@@ -72,16 +74,8 @@ rrates <- adataAC %>% filter(Year == 2022) %>%
 
 rrates = left_join(rrates, haqidata)
 
-# Check with converted antibiotic names for co-trim and 3rd ceph e. coli and 2nd ceph staph
-rrates_ac <- adataAC_ac %>% filter(Year == 2022) %>%
-  group_by(Iso3, Specimen, PathogenName, AntibioticName, InReport) %>%
-  reframe(amr_rate = Resistant/InterpretableAST,
-          BCI_1000000pop = InterpretableAST/TotalPopulation*1000000)
 
-rrates_ac = left_join(rrates_ac, haqidata)
-
-
-# AST vs Isolates per 1000000 pop
+# AST vs Isolates per 1000000 pop - RAW counts
 ####################################################################################
 
 p1 = ggplot(rrates %>% filter(PathogenName=="Escherichia coli", InReport=="Yes", 
@@ -97,22 +91,8 @@ p1 = ggplot(rrates %>% filter(PathogenName=="Escherichia coli", InReport=="Yes",
     y = "Resistance %")
 p1
 
-p1_ac = ggplot(rrates_ac %>% filter(PathogenName=="Escherichia coli", InReport=="Yes", 
-                              Specimen=="BLOOD"), aes(x=BCI_1000000pop, y=amr_rate,group=AntibioticName)) +
-  geom_point(size=2, alpha=0.5) +  
-  geom_vline(xintercept=70, linetype=2, col="red", linewidth=0.7) +
-  geom_smooth(col="seagreen") +
-  facet_wrap(.~ AntibioticName, ncol=4, scales=c("free")) +
-  theme_minimal() + 
-  labs(
-    title = "BCI/100 000 vs AMR Rates (E. coli - Blood specimens)",
-    x = "BCI/100 000 population",
-    y = "Resistance %")
-p1_ac
 
-multiplot(p1, p1_ac, cols=2)
-
-p1.haqi= ggplot(rrates %>% filter(PathogenName=="Escherichia coli", AntibioticName!="Doripenem",
+p1.haqi= ggplot(rrates %>% filter(PathogenName=="Escherichia coli", InReport=="Yes", 
                                   Specimen=="BLOOD"), aes(x=val, y=amr_rate,group=AntibioticName)) +
   geom_point(size=2, alpha=0.5) +  
   geom_vline(xintercept=70, linetype=2, col="red", linewidth=0.7) +
@@ -126,7 +106,7 @@ p1.haqi= ggplot(rrates %>% filter(PathogenName=="Escherichia coli", AntibioticNa
     y = "Resistance %") 
 p1.haqi
 
-p1.haqi.bci= ggplot(rrates %>% filter(PathogenName=="Escherichia coli", AntibioticName!="Doripenem",
+p1.haqi.bci= ggplot(rrates %>% filter(PathogenName=="Escherichia coli",  InReport=="Yes", 
                                       Specimen=="BLOOD"), aes(x=val, y=BCI_1000000pop,group=AntibioticName)) +
   geom_point(size=2, alpha=0.5) +  
   geom_vline(xintercept=70, linetype=2, col="red", linewidth=0.7) +
@@ -275,17 +255,18 @@ for(i in 1:length(unique(ecolidata$combined))) {
 # First fit model to the first dataset
 #fit <- fit_amr_model(data_sets[[1]], formula, priors)
 
-# Define the model formula
-formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3)) #
-#formula2 <- bf(Resistant | trials(InterpretableAST) + weights(TotalPopulation) ~ 1 + (1 | Iso3)) # This is weighting by population size
-
 # Define the priors
 priors <- c(
   prior(normal(0, 1), class = "Intercept"),    # Prior for the fixed effects (including intercept)
   prior(cauchy(0, 1), class = "sd")            # Prior for the standard deviation of the random effect
 )
-
 priors
+
+# Define the model formula
+formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3)) #
+#formula2 <- bf(Resistant | trials(InterpretableAST) + weights(TotalPopulation) ~ 1 + (1 | Iso3)) # This is weighting by population size
+
+
 
 # Fit the model using brms
 fit <- brm(formula, 
