@@ -3,7 +3,104 @@
 ######################################################
 library(dplyr)
 
-# Plot raw AMR rates - by drug-bug combination
+plot_isolates_db_asRegion <- function(data, year, pathogen, specimen, in_report, xlim_max = 1000, ncol_facet = 4, palette = palette5) {
+  # Filter the data based on the provided parameters
+  filtered_data <- data %>%
+    filter(Year == year, PathogenName == pathogen, Specimen == specimen, InReport == in_report)
+  
+  # Create the plot
+  p <- ggplot(filtered_data, aes(x = s_interpretableAST, y = DemographicsOrigin, col = WHORegionCode)) +
+    geom_point(size = 2) +
+    facet_wrap(. ~ AntibioticName, scales = "free_x", ncol = ncol_facet) +
+    theme_minimal() + 
+    geom_vline(xintercept = 100, col = "red", linetype = 2) + 
+    geom_vline(xintercept = 50, col = "seagreen", linetype = 2) + 
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1)
+    ) +
+    scale_color_manual(values = palette) +
+    xlim(0, xlim_max) + 
+    labs(
+      title = "Number of isolates with interpretable AST - by region, age & sex",
+      subtitle = paste0(pathogen, " - ", specimen), 
+      x = "Number of Isolates",
+      y = "Age group (10 year bands)"
+    )
+  
+  # Return the plot
+  return(p)
+}
+
+plot_isolates_db_as <- function(data, year, specimen, in_report, exclude_antibiotic = NULL, ncol_facet = 3, xlim_max = 1000) {
+  # Filter the data based on the provided parameters
+  filtered_data <- data %>%
+    filter(Year == year, InReport == in_report, Specimen %in% specimen) %>%
+    filter(!AntibioticName %in% ifelse(is.null(exclude_antibiotic), character(0), exclude_antibiotic))
+  
+  # Create the plot
+  p <- ggplot(filtered_data, aes(x = s_interpretableAST, y = DemographicsOrigin, col = AntibioticName)) +
+    geom_point(size = 3) +
+    theme_minimal() +
+    facet_wrap(. ~ PathogenName, ncol = ncol_facet, scales = "free") +
+    geom_vline(xintercept = 100, col = "red", linetype = 2) + 
+    geom_vline(xintercept = 50, col = "seagreen", linetype = 2) + 
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1)
+    ) +
+    labs(
+      title = "Number of isolates with interpretable AST - by age & sex",
+      subtitle = specimen, 
+      x = "Number of Isolates",
+      y = "Age group (10 year bands)"
+    )
+  
+  # Return the plot
+  return(p)
+}
+
+
+# plot raw AMR rates by age and sex per region
+plot_AMRdb_as_region <- function(data, year, pathogen, specimen, in_report, exclude_antibiotics = NULL, facet_colors, palette = palette5) {
+  # Filter the data based on the provided parameters
+  filtered_data <- data %>%
+    filter(Year == year, PathogenName == pathogen, Specimen == specimen, InReport == in_report) %>%
+    filter(!AntibioticName %in% ifelse(is.null(exclude_antibiotics), character(0), exclude_antibiotics))
+  
+  # Create the plot
+  p <- ggplot(filtered_data, aes(y = amr_rate, x = AgeCat10, fill = Sex)) +
+    geom_jitter(aes(alpha = 0.6, col = Sex)) +
+    geom_boxplot(na.rm = TRUE) +
+    facet_grid2(AntibioticName ~ WHORegionCode, scales = "free_y",
+                strip = strip_themed(
+                  background_x = list(
+                    element_rect(fill = facet_colors["AFR"]),
+                    element_rect(fill = facet_colors["AMR"]),
+                    element_rect(fill = facet_colors["EMR"]),
+                    element_rect(fill = facet_colors["EUR"]),
+                    element_rect(fill = facet_colors["SEA"]),
+                    element_rect(fill = facet_colors["WPR"])
+                  )
+                )) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      strip.text = element_text(size = 12)
+    ) +
+    scale_fill_manual(values = palette) +
+    scale_alpha(guide = "none") + 
+    labs(
+      title = "AMR prevalence - by region, age & sex",
+      subtitle = paste0(pathogen, " - ", specimen), 
+      y = "AMR prevalence",
+      x = "Age group (10 year bands)"
+    )
+  
+  # Return the plot
+  return(p)
+}
+
+
+# Plot map of raw AMR rates - by drug-bug combination
 ######################################################
 plot_amr_map <- function(shapefile, amr_data,
                          specimen, pathogen_name, antibiotic_name, na_color = "lightgrey") {

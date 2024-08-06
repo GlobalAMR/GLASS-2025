@@ -29,7 +29,7 @@ source("./multiplot.R")
 
 # Population data
 pdata = read.csv(paste0(dirDataNew, "/EI_Popdta_180724_EV.csv"), sep=",")       
-pdataF_raw = readxl::read_xlsx(paste0(dirDataNew, "/UN_pop_raw/EI_Popdta_byagesexMale_180724_EV.xlsx"))
+pdataF_raw = readxl::read_xlsx(paste0(dirDataNew, "/UN_pop_raw/EI_Popdta_byagesexFemale_180724_EV.xlsx"))
 pdataM_raw = readxl::read_xlsx(paste0(dirDataNew, "/UN_pop_raw/EI_Popdta_byagesexMale_180724_EV.xlsx"))
 
 # Country data
@@ -637,6 +637,7 @@ adataNT_cbc = rbind(adataNT_cbc,ceph_staph_bl)
 
 # Link AMR data with country data 
 adataNT_cbc = left_join(adataNT_cbc, pdataDM)
+adataNT_cbc = left_join(adataNT_cbc, cdata %>% select(c(Iso3, CountryTerritoryArea, WHORegionCode, WHORegionName, IncomeWorldBankJune2022)))
 
 
 # Export data

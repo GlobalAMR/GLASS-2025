@@ -10,7 +10,7 @@ rm(list=ls())
 # Load R packages
 pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, 
                table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet,
-               meta, metafor,PHEindicatormethods)
+               meta, metafor,PHEindicatormethods, RColorBrewer, wesanderson, ggforce)
 
 # Locate directories
 dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
@@ -35,6 +35,7 @@ cdata = read.csv(paste0(dirDataNew, "/EI_Countrydta_180724_EV.csv"), sep=",")   
 
 # Surveillance indicator data
 idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_080724_EV.csv"), sep=",")                   # Implementation data
+idata_country = read.csv(paste0(dirDataNew,"/EI_ImplementationCdta_080724_EV.csv"), sep=",") 
 
 # HAQI data
 haqidata = read.csv(paste0(dirDataNew, "/EI_HAQIdta_080724_EV.csv"), sep=",")
@@ -56,17 +57,48 @@ rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
   median = as.numeric(median)
 )
 
+# Drug bug combinations to include in report
+combinations2022 = dbdata %>% filter(Period %in% c("2016-","2016-2022")) %>%
+  mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName))
+
 ###################################################################
 # PREAMBLE
 ###################################################################
 
-###################################################################
-## DESCRIPTIVES
-##################################################################
+# Take out all the lines which specify the origin of the sample (as we don't have denominator population data for those)
+# Add InReport to specify if drug-bug combination should be reported on
+adataAS = adataNT %>% filter(!is.na(TotalPopulation)) %>%
+  mutate(
+    combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName),
+    InReport = ifelse(combined %in% unique(combinations2022$combined), "Yes","No"),
+    amr_rate = Resistant/InterpretableAST, 
+    # The above rates are based on very small numbers
+    # Would be better to calculate prevalence by age globally
+    BCI_1000000pop = InterpretableAST/TotalPopulation*1000000,
+  )
+
+# For now, calculate standardised rates with incidence rates, still direct method, but
+# Assuming the same globally (or if anything, regionally), as we are dealing for many countries with low numbers
+rrateAS_region = adataAS %>% group_by(WHORegionCode, Year,AgeCat10,Sex, DemographicsOrigin, PathogenName, AntibioticName, Specimen, 
+                                      InReport) %>%
+  summarise(
+    s_interpretableAST = sum(InterpretableAST),  # number of samples
+    s_resistant = sum(Resistant),  # count of resistant samples
+    s_amr_rate = s_resistant/s_interpretableAST,  # proportion resistant
+    m_amr_rate = median(Resistant)/median(InterpretableAST)
+  ) %>%
+  ungroup()
+
+rrateAS_global = adataAS %>% group_by(Year, DemographicsOrigin, PathogenName, AntibioticName, Specimen, InReport) %>%
+  summarise(
+    s_interpretableAST = sum(InterpretableAST),  # number of samples
+    s_resistant = sum(Resistant),  # count of resistant samples
+    s_amr_rate = s_resistant/s_interpretableAST,  # proportion resistant
+    m_amr_rate = median(Resistant)/median(InterpretableAST)
+  ) %>%
+  ungroup()
 
 # Get testing and AMR rates
-##################################################################
-
 rrates <- adataAC %>% filter(Year == 2022) %>%
   group_by(Iso3, Specimen, PathogenName, AntibioticName, InReport) %>%
   reframe(amr_rate = Resistant/InterpretableAST,
@@ -74,6 +106,305 @@ rrates <- adataAC %>% filter(Year == 2022) %>%
 
 rrates = left_join(rrates, haqidata)
 
+
+###################################################################
+## DESCRIPTIVES
+##################################################################
+
+
+palette <- wes_palette("Darjeeling1", n = 5)
+palette2 <- wes_palette("BottleRocket2", n = 1)
+palette3 <- wes_palette("GrandBudapest1", n = 2)[2]
+palette4 <- wes_palette("BottleRocket2", n = 2)[2]
+
+palette5 = c(palette3, palette[2],palette2,palette[5], palette[4],palette4)
+
+# Number of isolates with AST By region
+####################################################################
+
+p1 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Escherichia coli", 
+                               specimen = "BLOOD", in_report = "Yes", xlim_max = 1000, 
+                               ncol_facet = 4, palette = palette5)
+p1
+
+p1.2 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Escherichia coli", 
+                                 specimen = "URINE", in_report = "Yes", xlim_max = 2000, 
+                                 ncol_facet = 4, palette = palette5)
+p1.2
+
+p2 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Klebsiella pneumoniae", 
+                               specimen = "BLOOD",in_report = "Yes", xlim_max = 1000, 
+                               ncol_facet = 4, palette = palette5)
+p2
+
+p2.1 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Klebsiella pneumoniae", 
+                               specimen = "URINE",in_report = "Yes", xlim_max = 1000, 
+                               ncol_facet = 4, palette = palette5)
+p2.1
+
+p3 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Salmonella spp.", 
+                               specimen = "BLOOD",in_report = "Yes", xlim_max = 1000, 
+                               ncol_facet = 4, palette = palette5)
+p3
+
+p3.1 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Salmonella spp.", 
+                               specimen = "STOOL",in_report = "Yes", xlim_max = 1000, 
+                               ncol_facet = 4, palette = palette5)
+p3.1
+
+p4 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Acinetobacter spp.", 
+                               specimen = "BLOOD",in_report = "Yes", xlim_max = 1000, 
+                               ncol_facet = 4, palette = palette5)
+p4
+
+p5 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Shigella spp.", 
+                               specimen = "STOOL",in_report = "Yes", xlim_max = 1000, 
+                               ncol_facet = 3, palette = palette5)
+p5
+
+p6 = plot_isolates_db_asRegion(data = rrateAS_region, year = 2022, pathogen = "Neisseria gonorrhoeae", 
+                               specimen = "UROGENITAL",in_report = "Yes", xlim_max = 1000, 
+                               ncol_facet = 3, palette = palette5)
+p6
+
+pdf(paste0(dirOutput, "/Descriptive/AST_region_agesex.pdf"), width = 14, height = 100) # Open a PDF device for saving
+# Arrange the plots in a grid with 4 plots per row
+multiplot(p1,p2,p1.2,p2.1,p3,p3.1,p4,p5,p6, cols=1)
+dev.off()
+
+# So for which <100 isolates of drug-bug AMR by age and sex (to calculate regional AMR specific AMR? 
+# E coli BLOOD 
+# ---------------------------------------
+# Ampicilin (ALL)
+# Co-trimoxazole (ALL)
+# Doripenem (Almost ALL)
+# Levofloxacin (AFRO, SEARO)
+# Colistin (ALL)
+
+# K. pneumoniae blood
+# ---------------------------------------
+# Co-trimoxazole (EURO)
+# Doripenem (ALL)
+# Levofloxacin (AFRO)
+
+# E coli URINE 
+# ---------------------------------------
+# Ampicillin (ALL)
+# Doripenem (ALMOST ALL)
+# Colistin (AFRO, EURO)
+# Levofloxacin (AFRO)
+
+# K. pneumoniae URINE
+# --------------------------------------
+# Colistin (AFRO, WPR, EUR)
+# Levofloxacin (AFRO only)
+
+# Salmonella spp BLOOD and STOOL
+# --------------------------------------
+# (Almost) All drug-bug combinations
+
+# Acinetobacter spp BLOOD
+# --------------------------------------
+
+# Shigella spp STOOL
+# --------------------------------------
+# (Almost) All drug-bug combinations
+
+# Neisseria gonorrhoea UROGENITAL
+# --------------------------------------
+# (Almost) All drug-bug combinations
+
+
+# NUMBER OF ISOLATES WITH AST GLOBAL
+#################################################################
+
+p1 <- plot_isolates_db_as(data = rrateAS_global, year = 2022, specimen = "BLOOD", in_report = "Yes",
+                       exclude_antibiotic = c("Doripenem"), ncol_facet = 3)
+p1
+
+p2 <- plot_isolates_db_as(data = rrateAS_global, year = 2022, specimen = "URINE", in_report = "Yes",
+                       exclude_antibiotic = c("Doripenem"), ncol_facet = 3)
+p2
+
+p3 <- plot_isolates_db_as(data = rrateAS_global, year = 2022, specimen = c("UROGENITAL", "STOOL"), in_report = "Yes",
+                       exclude_antibiotic = c("Doripenem"), ncol_facet = 3
+)
+p3
+
+pdf(paste0(dirOutput, "/Descriptive/AST_global_agesex.pdf"), width = 14, height = 20) # Open a PDF device for saving
+# Arrange the plots in a grid with 4 plots per row
+multiplot(p1,p2,p3, cols=1)
+dev.off()
+
+# So for which <100 isolates of drug-bug AMR by age and sex globally 
+# BLOOD 
+# ---------------------------------------
+# Doripenem (Acinetobacter, E. coli, K pneumoniae)
+# Levofloxacin (Salmonella spp.)
+
+# URINE 
+# ---------------------------------------
+# Doripenem (E. coli)
+
+# UROGENITAL / STOOL 
+# ---------------------------------------
+# Levofloxacin (Salmonella, Shigella)
+# Azithromycin (Shigella spp)
+
+
+# PLOT AMR rates by rage and sex - region
+#################################################################################
+
+# Define colors for each WHORegionCode
+facet_colors <- c(
+  "AFR" = palette5[1],
+  "AMR" = palette5[2],
+  "EMR" = palette5[3],
+  "EUR" = palette5[4],
+  "SEA" = palette5[5],
+  "WPR" = palette5[6]
+)
+
+# p1 = ggplot(rrateAS_region %>% filter(Year==2022, PathogenName=="Escherichia coli", Specimen=="BLOOD", InReport=="Yes", Sex=="Female",
+#                                       !AntibioticName %in% c( "Doripenem", "Ampicillin")), 
+#             aes(y=m_amr_rate, x=AgeCat10, group=WHORegionCode, col=WHORegionCode)) +
+#   #geom_vline(xintercept = "M_0<04", linetype=1, col="grey", size=1) + 
+#   geom_point(size=2) +
+#   #geom_line() + 
+#   facet_wrap(.~ AntibioticName+WHORegionCode,ncol=6)+
+#   theme_minimal() + 
+#   #geom_vline(xintercept = 50, col="seagreen", linetype=2) + 
+#   theme(
+#     axis.text.x = element_text(angle = 90, hjust = 1)) +
+#   scale_color_manual(values = palette5) +
+#   labs(
+#     title = "AMR prevalence - by region & Female age strata (E. coli - Blood)",
+#     y = "AMR prevalence",
+#     x = "Age group (10 year bands)")
+# 
+# p1
+# 
+# p2 = ggplot(rrateAS_region %>% filter(Year==2022, PathogenName=="Escherichia coli", Specimen=="BLOOD", InReport=="Yes", Sex=="Male",
+#                                       !AntibioticName %in% c( "Doripenem", "Ampicillin")), 
+#             aes(y=m_amr_rate, x=AgeCat10, group=WHORegionCode, col=WHORegionCode)) +
+#   #geom_vline(xintercept = "M_0<04", linetype=1, col="grey", size=1) + 
+#   geom_point(size=2) +
+#   #geom_line() + 
+#   facet_wrap(.~ AntibioticName+WHORegionCode,ncol=6)+
+#   theme_minimal() + 
+#   #geom_vline(xintercept = 50, col="seagreen", linetype=2) + 
+#   theme(
+#     axis.text.x = element_text(angle = 90, hjust = 1)) +
+#   scale_color_manual(values = palette5) +
+#   labs(
+#     title = "AMR prevalence - by region & Male age strata (E. coli - Blood)",
+#     y = "AMR prevalence",
+#     x = "Age group (10 year bands)")
+# 
+# p2
+# 
+# # p1.2 = ggplot(adataAS %>% filter(Year==2022, PathogenName=="Escherichia coli", Specimen=="BLOOD", InReport=="Yes", Sex="Female",
+# #                                  !AntibioticName %in% c( "Doripenem", "Ampicillin")), 
+# #             aes(y=amr_rate, x=AgeCat10, fill=WHORegionCode)) +
+# #   #geom_vline(xintercept = "M_0<04", linetype=1, col="grey", size=1) + 
+# #   geom_boxplot(na.rm=T) +
+# #   geom_jitter() + 
+# #   facet_wrap(.~ AntibioticName+WHORegionCode,ncol=6, scales="free_y")+
+# #   theme_minimal() + 
+# #   #geom_vline(xintercept = 50, col="seagreen", linetype=2) + 
+# #   theme(
+# #     axis.text.x = element_text(angle = 90, hjust = 1)) +
+# #   scale_fill_manual(values = palette5) +
+# #   labs(
+# #     title = "AMR prevalence - by region & Female age strata (E. coli - Blood)",
+# #     y = "AMR prevalence",
+# #     x = "Age group (10 year bands)")
+# # 
+# # p1.2
+
+p1 <- plot_AMRdb_as_region(data = adataAS, year = 2022, pathogen = "Escherichia coli", specimen = "BLOOD", 
+  in_report = "Yes",exclude_antibiotics = c("Doripenem", "Ampicillin"), facet_colors = facet_colors,
+  palette = palette5)
+p1
+
+p1.2 <- plot_AMRdb_as_region(data = adataAS, year = 2022, pathogen = "Escherichia coli", specimen = "URINE", 
+                           in_report = "Yes",exclude_antibiotics = c("Doripenem", "Ampicillin"), facet_colors = facet_colors,
+                           palette = palette5)
+p1.2
+
+p2 <- plot_AMRdb_as_region(data = adataAS, year = 2022, pathogen = "Klebsiella pneumoniae", specimen = "BLOOD", 
+                           in_report = "Yes",exclude_antibiotics = NULL, facet_colors = facet_colors,
+                           palette = palette5)
+p2
+
+p2.1 <- plot_AMRdb_as_region(data = adataAS, year = 2022, pathogen = "Klebsiella pneumoniae", specimen = "URINE", 
+                           in_report = "Yes",exclude_antibiotics = NULL, facet_colors = facet_colors,
+                           palette = palette5)
+p2.1
+
+p3 <- plot_AMRdb_as_region(data = adataAS, year = 2022, pathogen = "Salmonella spp.", specimen = "BLOOD", 
+                             in_report = "Yes",exclude_antibiotics = NULL, facet_colors = facet_colors,
+                             palette = palette5)
+p3
+
+p4 <- plot_AMRdb_as_region(data = adataAS, year = 2022, pathogen = "Acinetobacter spp.", specimen = "BLOOD", 
+                           in_report = "Yes",exclude_antibiotics = NULL, facet_colors = facet_colors,
+                           palette = palette5)
+p4
+
+p5 <- plot_AMRdb_as_region(data = adataAS, year = 2022, pathogen = "Staphylococcus aureus", specimen = "BLOOD", 
+                           in_report = "Yes",exclude_antibiotics = NULL, facet_colors = facet_colors,
+                           palette = palette5)
+p5
+
+
+# pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_means_Female.pdf"), width = 14, height = 15) # Open a PDF device for saving
+# multiplot(p1, cols=1)
+# dev.off()
+# 
+# pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_means_Male.pdf"), width = 14, height = 30) # Open a PDF device for saving
+# multiplot(p2, cols=1)
+# dev.off()
+
+# 
+# pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_boxplot_Female.pdf"), width = 14, height = 30) # Open a PDF device for saving
+# # Arrange the plots in a grid with 4 plots per row
+# multiplot(p1.2, cols=1)
+# dev.off()
+
+pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_boxplot_e.coliBLOOD.pdf"), width = 20, height = 30) # Open a PDF device for saving
+multiplot(p1, cols=1)
+dev.off()
+
+
+pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_boxplot_e.coliURINE.pdf"), width = 20, height = 30) # Open a PDF device for saving
+multiplot(p1.2, cols=1)
+dev.off()
+
+pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_boxplot_kpnBLOOD.pdf"), width = 20, height = 30) # Open a PDF device for saving
+multiplot(p2, cols=1)
+dev.off()
+
+pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_boxplot_kpnURINE.pdf"), width = 20, height = 30) # Open a PDF device for saving
+multiplot(p2.1, cols=1)
+dev.off()
+
+pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_boxplot_salmBLOOD.pdf"), width = 20, height = 30) # Open a PDF device for saving
+multiplot(p3, cols=1)
+dev.off()
+
+pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_boxplot_abacterBLOOD.pdf"), width = 20, height = 30) # Open a PDF device for saving
+multiplot(p4, cols=1)
+dev.off()
+
+pdf(paste0(dirOutput, "/Descriptive/AMR_Regional_agesex_boxplot_s.aureusBLOOD.pdf"), width = 20, height = 10) # Open a PDF device for saving
+multiplot(p5, cols=1)
+dev.off()
+
+
+# Interpretation of boxplot of country-level raw AMR rates 
+# ---------------------------------------------------------------------
+# Shows that for particularly EMRO and AFRO, there is lots of variation in the AMR rates by age and sex
 
 # AST vs Isolates per 1000000 pop - RAW counts
 ####################################################################################
@@ -160,8 +491,8 @@ im_table1 = table1(~ factor(AMR_NCC)+
                    lab_number_data_call+
                    local_lab_eqa_number_data_call| factor(AMR_GLASS_AST), data=idata_country%>%filter(!is.na(EnrolledAMR)&EnrollmentYearAMR<"2023"))
 
-im_table1 # So 87 countries report to GLASS among those that have also filled out the implementation survey
-table(idata_country$AMR_GLASS_AST,useNA="always") # 87 countries reported to GLASS at least one isolate with AST
+im_table1 # So 90 countries report to GLASS among those that have also filled out the implementation survey
+table(idata_country$AMR_GLASS_AST,useNA="always") # 92 countries reported to GLASS at least one isolate with AST
 
 # Surveillance indicators summary - by GLASS enrollment == Yes and region
 im_table1_regionGLASS = table1(~ factor(AMR_NCC)+ 
@@ -201,20 +532,18 @@ im_table1_regionAST = table1(~ factor(AMR_NCC)+
                      lab_number_data_call+
                      local_lab_eqa_number_data_call| factor(WHORegionCode), data=idata_country%>%filter(!is.na(AMR_GLASS_AST)& AMR_GLASS_AST=="Yes" &EnrollmentYearAMR<"2023"))
 
-im_table1_regionAST # So 87 countries report to GLASS among those that have also filled out the implementation survey
+im_table1_regionAST # So 90 countries report to GLASS among those that have also filled out the implementation survey
 
-write.table(im_table1, paste0(dirOutput,"/Descriptive/im_2023_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
-write.table(im_table1_regionGLASS, paste0(dirOutput,"/Descriptive/im_regionGLASS_2023_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
-write.table(im_table1_regionAST, paste0(dirOutput,"/Descriptive/im_regionAST_2023_table1.csv"), col.names = T, row.names=F, append= F, sep=';')
+write.table(im_table1, paste0(dirOutput,"/Descriptive/Section3.2_Surveillance_indicators/im2024_ASTprovided.csv"), col.names = T, row.names=F, append= F, sep=';')
+write.table(im_table1_regionGLASS, paste0(dirOutput,"/Descriptive/Section3.2_Surveillance_indicators/im2024_GLASSenrolled_byregion.csv"), col.names = T, row.names=F, append= F, sep=';')
+write.table(im_table1_regionAST, paste0(dirOutput,"/Descriptive/Section3.2_Surveillance_indicators/im2024_ASTprovided_byregion.csv"), col.names = T, row.names=F, append= F, sep=';')
 
 ###############################################################
 # ESTIMATES BASED ON Modelled resistance rates 
 ###############################################################
 
 # First trial with just E. coli 
-#combinations2022ec_BLOOD = combinations2022 %>% filter(PathogenName%in% c("Escherichia coli")&
-#                                                       Specimen=="BLOOD")
-ecolidata = adataAC %>% filter(PathogenName == "Escherichia coli" & Year == 2021 & InReport=="Yes")
+ecolidata = adataAS %>% filter(PathogenName == "Escherichia coli" & InReport=="Yes")
 unique(ecolidata$combined) # Count as 27 so all should be there
 
 # Create list of data.frames
@@ -226,7 +555,7 @@ for(i in 1:length(unique(ecolidata$combined))) {
     filter(Specimen == d$Specimen[i],
            PathogenName == d$PathogenName[i],
            AntibioticName == d$AntibioticName[i],
-           Year == 2021) %>%
+           Year == 2022) %>%
     group_by(Iso3) %>%
     reframe(AMRrate = Resistant/InterpretableAST,
             Specimen = d$Specimen[i],
@@ -236,7 +565,7 @@ for(i in 1:length(unique(ecolidata$combined))) {
             InterpretableAST = InterpretableAST,
             TotalPopulation = TotalPopulation,
             BCI_pop100000 = InterpretableAST/TotalPopulation*100000,
-            Year = 2021)
+            Year = 2022)
   print(paste0("Num", i))
   #print(data_subset[1,])
   data_sets[[i]] = data_subset
@@ -252,19 +581,9 @@ for(i in 1:length(unique(ecolidata$combined))) {
 
 # Fit the model to each dataset
 ##########################################################
-# First fit model to the first dataset
-#fit <- fit_amr_model(data_sets[[1]], formula, priors)
-
-# Define the priors
-priors <- c(
-  prior(normal(0, 1), class = "Intercept"),    # Prior for the fixed effects (including intercept)
-  prior(cauchy(0, 1), class = "sd")            # Prior for the standard deviation of the random effect
-)
-priors
 
 # Define the model formula
 formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3)) #
-#formula2 <- bf(Resistant | trials(InterpretableAST) + weights(TotalPopulation) ~ 1 + (1 | Iso3)) # This is weighting by population size
 
 
 
