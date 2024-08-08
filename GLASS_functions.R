@@ -3,6 +3,7 @@
 ######################################################
 library(dplyr)
 
+# Plot sum of isolates by region
 plot_isolates_db_asRegion <- function(data, year, pathogen, specimen, in_report, xlim_max = 1000, ncol_facet = 4, palette = palette5) {
   # Filter the data based on the provided parameters
   filtered_data <- data %>%
@@ -58,16 +59,16 @@ plot_isolates_db_as <- function(data, year, specimen, in_report, exclude_antibio
   return(p)
 }
 
-
-# plot raw AMR rates by age and sex per region
-plot_AMRdb_as_region <- function(data, year, pathogen, specimen, in_report, exclude_antibiotics = NULL, facet_colors, palette = palette5) {
+# plot country-level isolates by age and sex per region - boxplot
+plot_isolatesdb_as_regionCOUNTRY <- function(data, year, pathogen, specimen, in_report, exclude_antibiotics = NULL, 
+                                             ylim_max, facet_colors, palette = palette5) {
   # Filter the data based on the provided parameters
   filtered_data <- data %>%
-    filter(Year == year, PathogenName == pathogen, Specimen == specimen, InReport == in_report) %>%
+    filter(Year %in% year, PathogenName == pathogen, Specimen == specimen, InReport == in_report) %>%
     filter(!AntibioticName %in% ifelse(is.null(exclude_antibiotics), character(0), exclude_antibiotics))
   
   # Create the plot
-  p <- ggplot(filtered_data, aes(y = amr_rate, x = AgeCat10, fill = Sex)) +
+  p <- ggplot(filtered_data, aes(y = InterpretableAST, x = AgeCat10, fill = Sex)) +
     geom_jitter(aes(alpha = 0.6, col = Sex)) +
     geom_boxplot(na.rm = TRUE) +
     facet_grid2(AntibioticName ~ WHORegionCode, scales = "free_y",
@@ -82,6 +83,7 @@ plot_AMRdb_as_region <- function(data, year, pathogen, specimen, in_report, excl
                   )
                 )) +
     theme_minimal() +
+    ylim(0, ylim_max) + 
     theme(
       axis.text.x = element_text(angle = 90, hjust = 1),
       strip.text = element_text(size = 12)
@@ -89,7 +91,50 @@ plot_AMRdb_as_region <- function(data, year, pathogen, specimen, in_report, excl
     scale_fill_manual(values = palette) +
     scale_alpha(guide = "none") + 
     labs(
-      title = "AMR prevalence - by region, age & sex",
+      title = "Number of isolates with interpretable AST - by region, age & sex",
+      subtitle = paste0(pathogen, " - ", specimen), 
+      y = "AMR prevalence",
+      x = "Age group (10 year bands)"
+    )
+  
+  # Return the plot
+  return(p)
+}
+
+
+# plot raw AMR rates by age and sex per region
+plot_AMRdb_as_region <- function(data, year, pathogen, specimen, in_report, exclude_antibiotics = NULL, facet_colors, palette = palette5) {
+  # Filter the data based on the provided parameters
+  filtered_data <- data %>%
+    filter(Year %in% year, PathogenName == pathogen, Specimen == specimen, InReport == in_report) %>%
+    filter(!AntibioticName %in% ifelse(is.null(exclude_antibiotics), character(0), exclude_antibiotics))
+  
+  # Create the plot
+  p <- ggplot(filtered_data, aes(y = amr_rate, x = AgeCat10, fill = Sex)) +
+    geom_jitter(aes(alpha = 0.6, col = Sex)) +
+    geom_boxplot(na.rm = TRUE) +
+    geom_smooth(aes(group = Sex, color = Sex), method = "loess", se = T, linetype = "solid") +
+    facet_grid2(AntibioticName ~ WHORegionCode,
+                strip = strip_themed(
+                  background_x = list(
+                    element_rect(fill = facet_colors["AFR"]),
+                    element_rect(fill = facet_colors["AMR"]),
+                    element_rect(fill = facet_colors["EMR"]),
+                    element_rect(fill = facet_colors["EUR"]),
+                    element_rect(fill = facet_colors["SEA"]),
+                    element_rect(fill = facet_colors["WPR"])
+                  )
+                )) +
+    theme_minimal() +
+    ylim(0,1) + 
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1),
+      strip.text = element_text(size = 12)
+    ) +
+    scale_fill_manual(values = palette) +
+    scale_alpha(guide = "none") + 
+    labs(
+      title = "Proportion of resistant isolates - by region, age & sex",
       subtitle = paste0(pathogen, " - ", specimen), 
       y = "AMR prevalence",
       x = "Age group (10 year bands)"
@@ -294,6 +339,31 @@ get_fit_model <- function(model_fit) {
   # Return the model fit and the resistance rates summary as a dataframe
   return(list(fit = fit, summary = resistance_rates_df))
 }
+
+# Model with age and sex
+# Extract posterior predictions for each combination of country, age, and sex
+get_posterior_predictions <- function(model_fit, population_data, Year) {
+  
+  # Create a new dataset that includes all combinations of country, age, and sex
+  new_data <- population_data %>%
+    distinct(Iso3, Year, AgeCat10, Sex, InterpretableAST, Resistant, TotalPopulation) 
+  
+  # Get posterior samples for each combination
+  posterior_samples <- posterior_epred(model_fit, newdata = new_data, re_formula = NULL)
+  
+  # Average the predictions over the posterior samples
+  new_data$predicted_median <- apply(posterior_samples, 2, median)
+#  new_data$predicted_low <- apply(posterior_samples, 2, quantile(probs = 0.025))
+  
+  # Standardize predictions using population data
+  new_data = new_data %>%
+  mutate(
+    exp_resistant = predicted_median * TotalPopulation
+  )
+  new_data
+  return(new_data)
+}
+
 
 # Plot Model AMR rates by drug bug combination
 ################################################################################################
