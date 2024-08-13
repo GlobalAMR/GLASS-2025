@@ -6,7 +6,7 @@ rm(list=ls())
 # Load R packages
 pacman::p_load(readxl, writexl, lubridate, zoo, ggplot2, tidyverse, Hmisc, stringr,lme4,reshape2, RColorBrewer,
                table1, flextable, magrittr, officer, janitor, sf, gtsummary, leaflet, 
-               gridExtra, purrr, brms, cowplot)
+               gridExtra, purrr, brms, cowplot, ggrepel, grid)
 
 # Locate directories
 dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
@@ -45,6 +45,9 @@ adataNT = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_180724_EV.csv"), sep=",")  
 
 # List of drug bug combinations
 dbdata = read_excel(paste0(dirDataNew, "/updated_summary_dbc_longformat.xlsx"), sheet=1)
+
+# EAR data
+edata = read_excel(paste0(dirDataNew, "/EAR_events_2019_2024_EV.xlsx"))
 
 # rrates 2021
 rrates2021 = read_excel(paste0(dirOutputCheck, "/rrates_2021_75percentile.xlsx")) 
@@ -101,118 +104,6 @@ rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
 
 # 4.1	Resistance to antibiotics under surveillance in 2022	 
 ###################################################################
-# Descriptive map
-world_un <- st_read("C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/NewDatabaseEV/2022 GLASS data - New DB - for 2024 report/Master_Raw_Data_GLASS_2024/wb_countries_admin0_10m/WB_countries_Admin0_10m.shp")
-head(world_un)
-
-# Get unique combinations of Specimen, PathogenName, and AntibioticName
-# combinations <- adataAC %>%
-#   group_by(Specimen, PathogenName, AntibioticName) %>%
-#   summarise(n=n()) %>% select(-c(n)) %>%
-#   mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName)) %>%
-#   as.data.frame()
-
-
-# Resistance per drug-bug per country
-plot_amr_map(shapefile = world_un, 
-             amr_data = rrates, 
-             specimen = "BLOOD", 
-             pathogen_name = "Escherichia coli",
-             antibiotic_name = "Ceftriaxone", 
-             na_color = "lightgrey")
-  
-
-# Loop over all drug-bug combinations
-ecoli = combinations2022 %>% filter(PathogenName=="Escherichia coli")
-kpn = combinations2022 %>% filter(PathogenName=="Klebsiella pneumoniae")
-abact = combinations2022 %>% filter(PathogenName=="Acinetobacter spp.")
-salm = combinations2022 %>% filter(PathogenName=="Salmonella spp.")
-
-# Create a list of plots
-###################################
-
-# E. coli
-ecoli_maps <- pmap(
-  list(
-    ecoli$Specimen,
-    ecoli$PathogenName,
-    ecoli$AntibioticName
-  ),
-  ~ plot_amr_map(
-    world_un,
-    rrates %>% filter(PathogenName=="Escherichia coli"),
-    specimen = ..1,
-    pathogen_name = ..2,
-    antibiotic_name = ..3
-  )
-)
-
-# Klebsiella pneumoniae
-kpn_maps <- pmap(
-  list(
-    kpn$Specimen,
-    kpn$PathogenName,
-    kpn$AntibioticName
-  ),
-  ~ plot_amr_map(
-    world_un,
-    rrates %>% filter(PathogenName=="Klebsiella pneumoniae"),
-    specimen = ..1,
-    pathogen_name = ..2,
-    antibiotic_name = ..3
-  )
-)
-
-# Acinetobacter spp.
-abact_maps <- pmap(
-  list(
-    abact$Specimen,
-    abact$PathogenName,
-    abact$AntibioticName
-  ),
-  ~ plot_amr_map(
-    world_un,
-    rrates %>% filter(PathogenName=="Acinetobacter spp."),
-    specimen = ..1,
-    pathogen_name = ..2,
-    antibiotic_name = ..3
-  )
-)
-
-# Salmonella spp.
-salm_maps <- pmap(
-  list(
-    salm$Specimen,
-    salm$PathogenName,
-    salm$AntibioticName
-  ),
-  ~ plot_amr_map(
-    world_un,
-    rrates %>% filter(PathogenName=="Salmonella spp."),
-    specimen = ..1,
-    pathogen_name = ..2,
-    antibiotic_name = ..3
-  )
-)
-
-
-# Flatten the list of plots if necessary (ensure it's a simple list of ggplot objects)
-# Use marrangeGrob to arrange plots into a grid layout, and save to a file if needed
-pdf(paste0(dirOutput, "/Descriptive/Ecoli_AMR_Maps.pdf"), width = 11, height = 8.5) # Open a PDF device for saving
-marrangeGrob(grobs = ecoli_maps, ncol = 2, nrow = 2) # Adjust ncol and nrow as needed
-dev.off() # Close the PDF device
-
-pdf(paste0(dirOutput, "/Descriptive/Klebsiella_AMR_Maps.pdf"), width = 11, height = 8.5) # Open a PDF device for saving
-marrangeGrob(grobs = kpn_maps, ncol = 2, nrow = 2) # Adjust ncol and nrow as needed
-dev.off() # Close the PDF device
-
-pdf(paste0(dirOutput, "/Descriptive/Acinetobacter_AMR_Maps.pdf"), width = 11, height = 8.5) # Open a PDF device for saving
-marrangeGrob(grobs = abact_maps, ncol = 2, nrow = 2) # Adjust ncol and nrow as needed
-dev.off() # Close the PDF device
-
-pdf(paste0(dirOutput, "/Descriptive/Salmonella_AMR_Maps.pdf"), width = 11, height = 8.5) # Open a PDF device for saving
-marrangeGrob(grobs = salm_maps, ncol = 2, nrow = 2) # Adjust ncol and nrow as needed
-dev.off() # Close the PDF device
 
 
 # Plot the AMR estimates - per pathogen, antibiotics combined
@@ -304,3 +195,143 @@ dev.off()
  
 # Resistance map with bubbles for Specimen and Pathogen
 #######################################################################
+
+
+# CHAPTER 5: EAR DATA
+###################################################################################
+
+world_un <- st_read(paste0(dirDataNew,"/wb_countries_admin0_10m/WB_countries_Admin0_10m.shp"))
+head(world_un)
+
+world_data <- world_un %>%
+  rename(Iso3 = ISO_A3) %>%
+  st_make_valid()
+
+WHO_region_mapping <- idata_country %>% 
+  select(c(Iso3, WHORegionCode)) %>%
+  rename(WHORegion = WHORegionCode)
+
+
+world_data <- world_data %>%
+  left_join(WHO_region_mapping, by="Iso3") %>%
+  filter(!is.na(WHORegion))
+
+# Dissolve (aggregate) the geometry by WHORegion to ensure entire regions are colored
+who_region_geometry <- world_data %>%
+  group_by(WHORegion) %>%
+  summarise(geometry = st_union(geometry), .groups = 'drop')
+
+# Summarize the data by WHO Region
+eregion_summary <- edata %>%
+  group_by(WHORegion, Year) %>%
+  summarise(events = n(),
+            pathogen_resistance = paste(unique(paste(PathogenName, Resistance, sep = ": ")), collapse = "\n"),
+            .groups = 'drop')
+
+# Merge with summary data to maintain information for labels and dots
+eregion_summary <- left_join(eregion_summary, who_region_geometry, by = "WHORegion")
+
+
+#Define vertical and horizontal offsets for each WHO region
+region_offsets <- data.frame(
+  WHORegion = c("AMR", "AFR", "EMR", "WPR", "SEA", "EUR"),
+  x_offset = c(-1.5, -1.5, 1.5, 1.5, -1.5, 1.5),
+  y_offset = c(-1.5, -1.5, 1.5, 0.5, -0.5, 1.5)
+)
+
+# Add offsets to the summary data
+eregion_summary <- eregion_summary %>%
+  left_join(region_offsets, by = "WHORegion") %>%
+  mutate(
+    centroid_coords = st_coordinates(st_centroid(geometry)),
+    label_x = centroid_coords[,1] + x_offset,
+    label_y = centroid_coords[,2] + y_offset
+  )
+
+# Summarize the data by WHO Region
+eregion_eartype <- edata %>%
+  group_by(WHORegion, Year, `EAR Type`) %>%
+  summarise(events_type = n(),
+            .groups = 'drop')
+
+
+
+# Create the map plot
+map_plot <- ggplot(data = world_data) +
+  geom_sf(aes(fill = WHORegion), color = "white") +  # Color the entire WHO Region
+  scale_fill_manual(values = c(palette5, "grey"), name = "WHO Region") +
+  
+  # Add labels with specific alignment and no overlap
+  geom_label_repel(data = eregion_summary, aes(x = label_x, 
+                                               y = label_y, 
+                                               label = paste0(WHORegion, "\nYear: ", Year, "\nEvents: ", events, "\n", pathogen_resistance),
+                                               fill = WHORegion),
+                   size = 3, box.padding = 0.5, point.padding = 0.5, 
+                   segment.color = 'grey50', segment.size = 0.5, 
+                   nudge_x = 7, nudge_y = 5, max.overlaps = Inf) +
+  
+  # Plot jittered dots for each year at the centroid
+  geom_point(data = eregion_summary, aes(geometry = st_centroid(geometry), size = events),
+             stat = "sf_coordinates", position = position_jitter(width = 5, height = 5)) +
+  
+  labs(title = "AMR Reports by WHO Region",
+       fill = "WHO Region",
+       size = "Number of Events",
+       color = "WHO Region") +
+  
+  theme_minimal() +
+  theme(legend.position = "right",
+        axis.text = element_blank(),
+        axis.title = element_blank())
+
+# Create the stacked bar plot
+bar_plot <- ggplot(data = eregion_summary, aes(x = factor(Year), y = events, fill = WHORegion)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c(palette5, "grey"), name = "WHO Region") +
+  labs(x = "Year", y = "Number of Events\nby WHO region", fill = "WHO Region") +
+  theme_minimal() +
+  #guides(fill = guide_legend(nrow = 2)) +
+  theme(legend.position = "none",
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        panel.grid.major = element_blank(),  # Remove major grid lines
+        panel.grid.minor = element_blank()  # Remove minor grid lines
+  )
+
+# Convert the bar plot to a grob (graphical object)
+bar_grob <- ggplotGrob(bar_plot)
+
+# Define a new color palette for the EAR event types
+new_palette <- brewer.pal(7, "Set3")
+
+# Create the bar plot using the new color palette
+bar_type_plot <- ggplot(data = eregion_eartype, aes(x = factor(Year), y = events_type, fill = `EAR Type`)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = new_palette, name = "EAR type") +  # Use the new palette
+  labs(x = "Year", y = "Number of Events\nby type", fill = "WHO Region") +
+  theme_minimal() +
+  guides(fill = guide_legend(nrow = 3)) +
+  theme(legend.position = "bottom",
+        axis.text = element_text(size = 8),
+        axis.title = element_text(size = 10),
+        panel.grid.major = element_blank(),  # Remove major grid lines
+        panel.grid.minor = element_blank()  # Remove minor grid lines
+  )
+
+# Convert the bar plot to a grob (graphical object)
+bar_type_grob <- ggplotGrob(bar_type_plot)
+
+final_plot <- map_plot +
+  annotation_custom(bar_grob, xmin = -200, xmax = -70, ymin = -110, ymax = -30) +  # Adjust for lower left corner
+  # Add the second bar plot (bar_type_grob) as an inset in the lower right corner
+  annotation_custom(bar_type_grob, xmin = 70, xmax = 200, ymin = -110, ymax = -30)  # Adjust for lower right corner
+
+# Display the final plot
+print(final_plot)
+
+
+pdf(paste0(dirOutput, "/Descriptive/EAR_MAP.pdf"), width = 20, height = 33) # Open a PDF device for saving
+# Arrange the plots in a grid with 4 plots per row
+print(final_plot)
+dev.off()
+
