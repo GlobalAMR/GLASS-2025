@@ -93,7 +93,7 @@ plot_isolatesdb_as_regionCOUNTRY <- function(data, year, pathogen, specimen, in_
     labs(
       title = "Number of isolates with interpretable AST - by region, age & sex",
       subtitle = paste0(pathogen, " - ", specimen), 
-      y = "AMR prevalence",
+      y = "Number of isolates",
       x = "Age group (10 year bands)"
     )
   
@@ -147,7 +147,7 @@ plot_AMRdb_as_region <- function(data, year, pathogen, specimen, in_report, excl
 
 # Plot map of raw AMR rates - by drug-bug combination
 ######################################################
-plot_amr_map <- function(shapefile, amr_data,
+plot_amr_map <- function(shapefile, amr_data, year,
                          specimen, pathogen_name, antibiotic_name, na_color = "lightgrey") {
   
   # Load the shapefile
@@ -171,7 +171,7 @@ plot_amr_map <- function(shapefile, amr_data,
     scale_fill_viridis_c(option = "viridis", na.value = na_color) +  # Handle NA values with the specified color
     theme_minimal() +
     labs(
-      title = paste("AMR Rates for", specimen),
+      title = paste("AMR Rates for", specimen, "-", year),
       subtitle = paste(pathogen_name, "-", antibiotic_name),
       fill = "AMR Rate"
     )
@@ -284,85 +284,148 @@ ivw <- function(ASTdata, dbdata, year, pathogen, cor = 1000000, pop = c("yes", "
 # that ensures that all levels are present in each of the different datasets for each
 # of the drug bug combinations. This as otherwise brm_multiple does not work
 # Hence the model does not need to compile each time.
+# 
+# get_unique_levels <- function(datasets) {
+#   combined_levels <- list()
+#   
+#   for (df in datasets) {
+#     for (col in names(df)) {
+#       if (is.character(df[[col]])) {
+#         combined_levels[[col]] <- union(combined_levels[[col]], unique(df[[col]]))
+#       }
+#     }
+#   }
+#   
+#   return(combined_levels)
+# }
+# 
+# # Function to apply unique levels to each factor column
+# apply_unique_levels <- function(df, combined_levels) {
+#   for (col in names(df)) {
+#     if (is.character(df[[col]])) {
+#       df[[col]] <- factor(df[[col]], levels = combined_levels[[col]])
+#     }
+#   }
+#   return(df)
+# }
 
-get_unique_levels <- function(datasets) {
-  combined_levels <- list()
+
+# Function to create adjacency matrix for all years
+# Counts 1 when countries are neighbours, 0 otherwise
+create_combined_adj_matrix <- function(data, world_data) {
+  # Get unique countries across all years
+  all_countries <- unique(data$Iso3)
+  # Filter world data
+  world <- world_data %>% filter(iso_a3_eh %in% all_countries)
   
-  for (df in datasets) {
-    for (col in names(df)) {
-      if (is.character(df[[col]])) {
-        combined_levels[[col]] <- union(combined_levels[[col]], unique(df[[col]]))
-      }
-    }
-  }
+  # Convert to spatial polygons
+  world_sp <- as(world, "Spatial")
   
-  return(combined_levels)
+  # Compute neighboring countries
+  neighbors <- poly2nb(world_sp)
+  
+  # Create adjacency matrix
+  adj_matrix <- nb2mat(neighbors, style = "B", zero.policy = TRUE)
+  rownames(adj_matrix) <- colnames(adj_matrix) <- world$iso_a3_eh
+  
+  return(adj_matrix)
 }
 
-# Function to apply unique levels to each factor column
-apply_unique_levels <- function(df, combined_levels) {
-  for (col in names(df)) {
-    if (is.character(df[[col]])) {
-      df[[col]] <- factor(df[[col]], levels = combined_levels[[col]])
+# Function to expand adjacency matrix to match the dataset structure (i.e. by age- and sex)
+expand_adj_matrix <- function(adj_matrix, data) {
+  # Extract unique combinations of country, year, age category, and sex
+  unique_combinations <- data %>%
+    select(Iso3, Year, AgeCat10, Sex) %>%
+    distinct() %>%
+    arrange(Iso3, Year, AgeCat10, Sex)  # Ensure ordering
+  
+  # Number of unique combinations
+  num_combinations <- nrow(unique_combinations)
+  
+  # Create an expanded matrix with zeros
+  expanded_matrix <- Matrix(0, nrow = num_combinations, ncol = num_combinations, sparse = TRUE)
+  colnames(expanded_matrix) = unique_combinations$Iso3
+  rownames(expanded_matrix) = unique_combinations$Iso3
+  
+  # Get the row and column names of the adjacency matrix
+  row_names <- rownames(adj_matrix)
+  col_names <- colnames(adj_matrix)
+  
+  # Populate the expanded matrix
+  for (i in seq_len(nrow(adj_matrix))) {
+    #print(i)
+    row_iso3 <- row_names[i]
+    neighbors <- which(adj_matrix[i, ] == 1)
+    
+    for (neighbor in neighbors) {
+      col_iso3 <- col_names[neighbor]
+      
+      # Get the indices in the expanded matrix
+      row_indices <- which(unique_combinations$Iso3 == row_iso3)
+      col_indices <- which(unique_combinations$Iso3 == col_iso3)
+      
+      # Set values to 1 for neighbors
+      expanded_matrix[row_indices, col_indices] <- 1
     }
   }
-  return(df)
+  
+  return(expanded_matrix)
 }
 
 
 # Define the function to fit the model
-get_fit_model <- function(model_fit) {
-  
-  # Extract posterior samples for country-specific effects using as_draws_matrix
-  post_samples <- as_draws_matrix(model_fit)
-  
-  # Extract the overall intercept
-  intercept_samples <- post_samples[, "b_Intercept"]
-  
-  # Extract country-specific random effects
-  country_effects <- post_samples[, grep("^r_Iso3\\[", colnames(post_samples))]
-  
-  # Calculate the log-odds for each country by adding the overall intercept to the random effects
-  log_odds <- sweep(as.matrix(country_effects), 1, intercept_samples, FUN = "+")
-  
-  # Transform log-odds to probabilities
-  resistance_rates <- plogis(log_odds)
-  
-  # Summarize the resistance rates
-  resistance_rates_summary <- apply(resistance_rates, 2, quantile, probs = c(0.025, 0.5, 0.975))
-  
-  # Convert the summary to a dataframe
-  resistance_rates_df <- as.data.frame(t(resistance_rates_summary))
-  colnames(resistance_rates_df) <- c("low", "med50", "high")
-  resistance_rates_df$Country <- rownames(resistance_rates_df)
-  
-  # Return the model fit and the resistance rates summary as a dataframe
-  return(list(fit = fit, summary = resistance_rates_df))
-}
-
-# Model with age and sex
-# Extract posterior predictions for each combination of country, age, and sex
-get_posterior_predictions <- function(model_fit, population_data, Year) {
-  
-  # Create a new dataset that includes all combinations of country, age, and sex
-  new_data <- population_data %>%
-    distinct(Iso3, Year, AgeCat10, Sex, InterpretableAST, Resistant, TotalPopulation) 
-  
-  # Get posterior samples for each combination
-  posterior_samples <- posterior_epred(model_fit, newdata = new_data, re_formula = NULL)
-  
-  # Average the predictions over the posterior samples
-  new_data$predicted_median <- apply(posterior_samples, 2, median)
-#  new_data$predicted_low <- apply(posterior_samples, 2, quantile(probs = 0.025))
-  
-  # Standardize predictions using population data
-  new_data = new_data %>%
-  mutate(
-    exp_resistant = predicted_median * TotalPopulation
-  )
-  new_data
-  return(new_data)
-}
+# get_fit_model <- function(model_fit) {
+#   
+#   # Extract posterior samples for country-specific effects using as_draws_matrix
+#   post_samples <- as_draws_matrix(model_fit)
+#   
+#   # Extract the overall intercept
+#   intercept_samples <- post_samples[, "b_Intercept"]
+#   
+#   # Extract country-specific random effects
+#   country_effects <- post_samples[, grep("^r_Iso3\\[", colnames(post_samples))]
+#   
+#   # Calculate the log-odds for each country by adding the overall intercept to the random effects
+#   log_odds <- sweep(as.matrix(country_effects), 1, intercept_samples, FUN = "+")
+#   
+#   # Transform log-odds to probabilities
+#   resistance_rates <- plogis(log_odds)
+#   
+#   # Summarize the resistance rates
+#   resistance_rates_summary <- apply(resistance_rates, 2, quantile, probs = c(0.025, 0.5, 0.975))
+#   
+#   # Convert the summary to a dataframe
+#   resistance_rates_df <- as.data.frame(t(resistance_rates_summary))
+#   colnames(resistance_rates_df) <- c("low", "med50", "high")
+#   resistance_rates_df$Country <- rownames(resistance_rates_df)
+#   
+#   # Return the model fit and the resistance rates summary as a dataframe
+#   return(list(fit = fit, summary = resistance_rates_df))
+# }
+# 
+# # Model with age and sex
+# # Extract posterior predictions for each combination of country, age, and sex
+# get_posterior_predictions <- function(model_fit, population_data, Year) {
+#   
+#   # Create a new dataset that includes all combinations of country, age, and sex
+#   new_data <- population_data %>%
+#     distinct(Iso3, Year, AgeCat10, Sex, InterpretableAST, Resistant, TotalPopulation) 
+#   
+#   # Get posterior samples for each combination
+#   posterior_samples <- posterior_epred(model_fit, newdata = new_data, re_formula = NULL)
+#   
+#   # Average the predictions over the posterior samples
+#   new_data$predicted_median <- apply(posterior_samples, 2, median)
+# #  new_data$predicted_low <- apply(posterior_samples, 2, quantile(probs = 0.025))
+#   
+#   # Standardize predictions using population data
+#   new_data = new_data %>%
+#   mutate(
+#     exp_resistant = predicted_median * TotalPopulation
+#   )
+#   new_data
+#   return(new_data)
+# }
 
 
 # Plot Model AMR rates by drug bug combination
