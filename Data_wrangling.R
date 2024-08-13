@@ -326,11 +326,11 @@ adataAC_cb = rbind(adataAC_cb,ceph_ecoli_bl)
 # # Check if any duplicates were found
 # print(duplicates_J01DD) # 0 duplicates
 
-# Change 2nd generation cephalosporin for S. Aureus in BLOOD to max value in OXA and FOX
+# Change Methicillin-resistance for S. Aureus in BLOOD to max value in OXA and FOX
 ceph_staph_bl = adataAC %>% 
   filter(Antibiotic %in% c("OXA", "FOX") & Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus") %>%
   mutate(
-    AntibioticName = "Second-generation cephalosporins",
+    AntibioticName = "Methicillin-resistance",
     Antibiotic = "J01DC"
   ) %>% group_by(Iso3, Year, PathogenName, AntibioticName, Specimen) %>%
   mutate(
@@ -578,7 +578,7 @@ print(duplicates_J01DD) # 0 duplicates
 ceph_staph_bl = adataNT_c %>% 
   filter(Antibiotic %in% c("OXA", "FOX") & Specimen == "BLOOD" & PathogenName=="Staphylococcus aureus") %>%
   mutate(
-    AntibioticName = "Second-generation cephalosporins",
+    AntibioticName = "Methicillin-resistance",
     Antibiotic = "J01DC"
   ) %>% group_by(Iso3, Year, DemographicsOrigin, PathogenName, AntibioticName, Specimen) %>%
   mutate(
