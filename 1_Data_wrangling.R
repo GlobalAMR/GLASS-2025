@@ -279,8 +279,8 @@ f_rm <- adataAC %>%
 d <- adataAC %>%
   mutate(AntibioticName2 = case_when(
     #(Antibiotic == "CTX") & (Specimen == "BLOOD") & (Pathogen == "KLEPNE") ~ AntibioticName,
-    (Antibiotic %in% c("CTX", "CAZ", "CRO")) & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third generation cephalosporins',
-    (Year %in% c(2017, 2018)) & (Antibiotic == "J01DD") & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third generation cephalosporins',
+    (Antibiotic %in% c("CTX", "CAZ", "CRO")) & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third-generation cephalosporins',
+    (Year %in% c(2017, 2018)) & (Antibiotic == "J01DD") & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third-generation cephalosporins',
     (Antibiotic %in% c("OXA", "FOX")) & (Specimen == "BLOOD") & (Pathogen == "STAAUR") ~ 'Methicillin resistance',
     (Year %in% c(2017, 2018)) & (Antibiotic == "J01DC") & (Specimen == "BLOOD") & (Pathogen == "STAAUR") ~ 'Methicillin resistance',
     (Antibiotic %in% c("J01EE", "SXT")) & (Specimen %in% c("BLOOD", "URINE")) & (Pathogen == "ESCCOL") ~ "Co-trimoxazole",
@@ -349,7 +349,7 @@ names(a1)
 names(d7)
 
 d8 = rbind(d7,a1)
-check = d8%>% filter(Antibiotic %in%c("CTX", "CAZ", "CRO")|AntibioticName=="Third generation cephalosporins" & Pathogen=="ESCCOL"& Specimen=="BLOOD") 
+check = d8%>% filter(Antibiotic %in%c("CTX", "CAZ", "CRO")|AntibioticName=="Third-generation cephalosporins" & Pathogen=="ESCCOL"& Specimen=="BLOOD") 
 table(check$Iso3, check$AntibioticName)
 
 # Link country data so we can join HAQI data
@@ -469,8 +469,8 @@ f_rm <- adataNT_c %>%
 d <- adataNT_c %>%
   mutate(AntibioticName2 = case_when(
    # (Antibiotic == "CTX") & (Specimen == "BLOOD") & (Pathogen == "KLEPNE") ~ AntibioticName,
-    (Antibiotic %in% c("CTX", "CAZ", "CRO")) & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third generation cephalosporins',
-    (Year %in% c(2017, 2018)) & (Antibiotic == "J01DD") & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third generation cephalosporins',
+    (Antibiotic %in% c("CTX", "CAZ", "CRO")) & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third-generation cephalosporins',
+    (Year %in% c(2017, 2018)) & (Antibiotic == "J01DD") & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third-generation cephalosporins',
     (Antibiotic %in% c("OXA", "FOX")) & (Specimen == "BLOOD") & (Pathogen == "STAAUR") ~ 'Methicillin resistance',
     (Year %in% c(2017, 2018)) & (Antibiotic == "J01DC") & (Specimen == "BLOOD") & (Pathogen == "STAAUR") ~ 'Methicillin resistance',
     (Antibiotic %in% c("J01EE", "SXT")) & (Specimen %in% c("URINE","BLOOD")) & (Pathogen == "ESCCOL") ~ "Co-trimoxazole",
@@ -479,7 +479,7 @@ d <- adataNT_c %>%
   ))
 
 d2<-merge(d,f_rm, by=c("Year", "Specimen", "PathogenName", "Iso3", "DemographicsOrigin"), all.x=TRUE)
-#d2$tgc_ab = ifelse(!d2$AntibioticName2 %in% c('Third generation cephalosporins'), NA, d2$tgc_ab)
+#d2$tgc_ab = ifelse(!d2$AntibioticName2 %in% c('Third-generation cephalosporins'), NA, d2$tgc_ab)
 #d2$mt_ab = ifelse(!d2$AntibioticName2 %in% c('Methicillin resistance'), NA, d2$mt_ab)
 
 d3 <- d2 %>%
@@ -551,7 +551,7 @@ d9 = d8 %>%
   )
 
 d9$AntibioticName[d9$AntibioticName=="Cefotaxime "] = "Cefotaxime"
-#table(d9$AntibioticName[d9$Year==2022&d9$AntibioticName%in%c("Cefotaxime","Ceftazidime","Ceftriaxone","Third generation cephalosporins")], d9$Iso3[d9$Year==2022&d9$AntibioticName%in%c("Cefotaxime","Ceftazidime","Ceftriaxone","Third generation cephalosporins")])
+#table(d9$AntibioticName[d9$Year==2022&d9$AntibioticName%in%c("Cefotaxime","Ceftazidime","Ceftriaxone","Third-generation cephalosporins")], d9$Iso3[d9$Year==2022&d9$AntibioticName%in%c("Cefotaxime","Ceftazidime","Ceftriaxone","Third-generation cephalosporins")])
 
 d10 = left_join(d9, pdataDM)
 
