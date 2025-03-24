@@ -816,5 +816,6 @@ idatacss = idatacs %>% select(Iso3, CountryTerritoryArea, WHORegionCode, WHORegi
 
 # Export data
 write.csv(idatacss, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_linked/EI_Implementationdta_Country_140325_EV.csv"))
-#write.csv(sdata, paste0(dirDataNew, "/EI_SurveillanceSitesdta_Country_03092024_EV.csv"))
+write.csv(idatacs, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_linked/EI_Implementation_usage_dta_140325_EV.csv"))
+write.csv(sdata, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_linked/EI_SurveillanceSites_140325_EV.csv"))
 
