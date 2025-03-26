@@ -445,7 +445,7 @@ summarized_data2 <- adataNT %>%
   group_by(DemographicsOrigin) %>%
   summarise(TotalSpecimenIsolatesSum = sum(TotalSpecimenIsolates, na.rm = TRUE))
 
-#summarized_data %>% filter(DemographicsOrigin%in% c("F_0<04")) %>%
+# summarized_data %>% filter(DemographicsOrigin%in% c("F_0<04")) %>%
 #   summarise(
 #     n = sum(TotalSpecimenIsolatesSum)
 #   ) - summarized_data2 %>% filter(DemographicsOrigin%in% c("F_<1", "F_01<04")) %>%
@@ -457,10 +457,10 @@ summarized_data2 <- adataNT %>%
 # Merge Sulfonamides and trimethoprim and Co-trimoxazole, as the former is a class, but just one abx,
 # i.e. Co-trimoxazole. Merging should be done by taking among the countries with both or Sulfonamides and trimethoprim as well as Co-trimoxazole
 # the one with the max isolate count, as there may be overlap.
-
+# BELOW IS SLIGHTLY ODD IN THAT I AM TAKING THE MAX OVER AGE, ORIGIN, ETC
 # Target antibiotics for 3GC and Methicillin-resistance
 f_rm <- adataNT_c %>% 
-  group_by(Year, Specimen, PathogenName, Iso3, DemographicsOrigin) %>% 
+  group_by(Year, Specimen, PathogenName, Iso3, AgeCat10, DemographicsOrigin) %>% 
   summarise(tgc_ab=sum(Antibiotic =="CTX" | Antibiotic =="CAZ" | Antibiotic =="CRO"),
             mt_ab=sum(Antibiotic =="OXA" | Antibiotic =="FOX"))%>% 
   as.data.frame() 
@@ -478,7 +478,7 @@ d <- adataNT_c %>%
     TRUE ~ AntibioticName
   ))
 
-d2<-merge(d,f_rm, by=c("Year", "Specimen", "PathogenName", "Iso3", "DemographicsOrigin"), all.x=TRUE)
+d2<-merge(d,f_rm, by=c("Year", "Specimen", "PathogenName", "Iso3", "DemographicsOrigin", "AgeCat10"), all.x=TRUE)
 #d2$tgc_ab = ifelse(!d2$AntibioticName2 %in% c('Third-generation cephalosporins'), NA, d2$tgc_ab)
 #d2$mt_ab = ifelse(!d2$AntibioticName2 %in% c('Methicillin resistance'), NA, d2$mt_ab)
 
@@ -502,7 +502,7 @@ d5 <- d4  %>%
 
 d6 <- d5 %>%
   as.data.frame() %>%
-  group_by(Specimen, PathogenName, AntibioticName2, Iso3, Year, DemographicsOrigin) %>%
+  group_by(Specimen, PathogenName, AntibioticName2, Iso3, Year, AgeCat10, DemographicsOrigin) %>%
   slice_max(PercentResistant, with_ties = FALSE) %>%
   as.data.frame()
 
@@ -518,7 +518,7 @@ n_unique_observations - length(d6$combined) # No duplicates
 
 d7 <- d6 %>% select(-c(AntibioticName, tgc_ab, mt_ab, RemoveRecord)) %>%
   rename(AntibioticName = AntibioticName2) %>%
-  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, DemographicsOrigin, 
+  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, DemographicsOrigin, 
            NumSampledPatients, TotalSpecimenIsolates, SpecimenIsolateswithAST, 
            TotalPathogenIsolates, PathogenIsolateswithAST, TotalASTpathogenAntibiotic, InterpretableAST, Susceptible, 
            Intermediate, Resistant, UninterpretableAST, combined, PercentResistant))
@@ -532,7 +532,7 @@ a1 <- adataNT_c %>%
   filter(Antibiotic %in%c("CTX", "CAZ", "CRO") & Pathogen=="ESCCOL" & Specimen=="BLOOD") %>%
   mutate(PercentResistant = ((coalesce(Resistant,0)/(coalesce(InterpretableAST,0))*100))
   )%>%
-  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, DemographicsOrigin, 
+  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, DemographicsOrigin, 
            NumSampledPatients, TotalSpecimenIsolates, SpecimenIsolateswithAST, 
            TotalPathogenIsolates, PathogenIsolateswithAST, TotalASTpathogenAntibiotic, InterpretableAST, Susceptible, 
            Intermediate, Resistant, UninterpretableAST, combined, PercentResistant))
@@ -577,7 +577,7 @@ write.csv(adataDM, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_
 # DATA WRANGLING TO DATA WHICH MODELS ARE FITTED TO
 #----------------------------------------------------------------------------
 
-# Take out all the lines which specify the origin of the sample as well have a missing age
+# Take out all the lines which specify the origin of the sample; for now keep unknown age in and include them in model fitting
 # (as we don't have denominator population data for those)
 adataNT_cbc = d10
 adataNT_cbc$AntibioticName <- sub(" $", "", adataNT_cbc$AntibioticName)
@@ -631,7 +631,8 @@ f2 = d4 %>% filter(combined==no_add[2])
 
 # Make age a numeric co-variate so we can fit a non-linear trend
 adataAS <- adataAS %>%
-  mutate(s_AgeCat10 = case_when(
+  mutate(
+    s_AgeCat10 = case_when(
     AgeCat10=="0<04" ~ as.numeric(1),
     AgeCat10=="05<14" ~ as.numeric(2),
     AgeCat10=="15<24" ~ as.numeric(3),
@@ -644,6 +645,92 @@ adataAS <- adataAS %>%
     AgeCat10=="85+" ~ as.numeric(10),
     AgeCat10=="UnkAge" ~ NA
   ))
+
+# NOW CREATE 3GC, MRSA and Co-trim counts
+# Merge Sulfonamides and trimethoprim and Co-trimoxazole, as the former is a class, but just one abx,
+# i.e. Co-trimoxazole. Merging should be done by taking among the countries with both or Sulfonamides and trimethoprim as well as Co-trimoxazole
+# the one with the max isolate count, as there may be overlap.
+# BELOW IS SLIGHTLY ODD IN THAT I AM TAKING THE MAX OVER AGE, ORIGIN, ETC
+# Target antibiotics for 3GC and Methicillin-resistance
+f_rm <- adataAS %>% 
+  group_by(Year, Specimen, PathogenName, Iso3, AgeCat10, DemographicsOrigin) %>% 
+  summarise(tgc_ab=sum(Antibiotic =="CTX" | Antibiotic =="CAZ" | Antibiotic =="CRO"),
+            mt_ab=sum(Antibiotic =="OXA" | Antibiotic =="FOX"))%>% 
+  as.data.frame() 
+
+
+d <- adataAS %>%
+  mutate(AntibioticName2 = case_when(
+    # (Antibiotic == "CTX") & (Specimen == "BLOOD") & (Pathogen == "KLEPNE") ~ AntibioticName,
+    (Antibiotic %in% c("CTX", "CAZ", "CRO")) & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third-generation cephalosporins',
+    (Year %in% c(2017, 2018)) & (Antibiotic == "J01DD") & (Specimen == "BLOOD") & (Pathogen == "ESCCOL") ~ 'Third-generation cephalosporins',
+    (Antibiotic %in% c("OXA", "FOX")) & (Specimen == "BLOOD") & (Pathogen == "STAAUR") ~ 'Methicillin resistance',
+    (Year %in% c(2017, 2018)) & (Antibiotic == "J01DC") & (Specimen == "BLOOD") & (Pathogen == "STAAUR") ~ 'Methicillin resistance',
+    (Antibiotic %in% c("J01EE", "SXT")) & (Specimen %in% c("URINE","BLOOD")) & (Pathogen == "ESCCOL") ~ "Co-trimoxazole",
+    (Antibiotic %in% c("J01EE", "SXT")) & (Specimen %in% c("URINE", "BLOOD")) & (Pathogen == "KLEPNE") ~ "Co-trimoxazole",
+    TRUE ~ AntibioticName
+  ))
+
+d2<-merge(d,f_rm, by=c("Year", "Specimen", "PathogenName", "Iso3", "AgeCat10", "DemographicsOrigin"), all.x=TRUE)
+#d2$tgc_ab = ifelse(!d2$AntibioticName2 %in% c('Third-generation cephalosporins'), NA, d2$tgc_ab)
+#d2$mt_ab = ifelse(!d2$AntibioticName2 %in% c('Methicillin resistance'), NA, d2$mt_ab)
+
+d3 <- d2 %>%
+  mutate(RemoveRecord = case_when((Antibiotic =="J01DD") & (Year == "2017" | Year == "2018") & (Specimen =="BLOOD") & (Pathogen=="ESCCOL") & tgc_ab>0 ~  "remove",
+                                  (Antibiotic =="J01DC") & (Year == "2017" | Year == "2018") & (Specimen =="BLOOD") & (Pathogen=="STAAUR") & mt_ab>0 ~  "remove"))
+
+d4 <- d3 %>%
+  #filter(!is.na(AbTargets))%>% 
+  filter(is.na(RemoveRecord))%>% 
+  droplevels()
+
+
+##calculate resistance
+d5 <- d4  %>% 
+  mutate(PercentResistant = ((coalesce(Resistant,0)/(coalesce(InterpretableAST,0))*100)))
+
+
+#for a given grouping we want row with max (percentageResistance). However, we do not want to select max(InterpretableAST) because we 
+# instead want the InterpretableAST that was used to calculate max (percentageResistance). So instead of summarise(max) we use slice_max
+
+d6 <- d5 %>%
+  as.data.frame() %>%
+  group_by(Specimen, PathogenName, AntibioticName2, Iso3, Year, AgeCat10, DemographicsOrigin) %>%
+  slice_max(PercentResistant, with_ties = FALSE) %>%
+  as.data.frame()
+
+d6$combined = paste0(d6$Specimen, "-", d6$PathogenName, "-", d6$AntibioticName2)
+unique(d6$combined)
+
+# Check if duplicates removed
+n_unique_observations <- d6 %>%
+  distinct(combined, Iso3, Year, AgeCat10, DemographicsOrigin) %>%
+  nrow()
+
+n_unique_observations - length(d6$combined) # No duplicates
+
+d7 <- d6 %>% select(-c(AntibioticName, tgc_ab, mt_ab, RemoveRecord)) %>%
+  rename(AntibioticName = AntibioticName2) %>%
+  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, DemographicsOrigin, 
+           NumSampledPatients, TotalSpecimenIsolates, SpecimenIsolateswithAST, 
+           TotalPathogenIsolates, PathogenIsolateswithAST, TotalASTpathogenAntibiotic, InterpretableAST, Susceptible, 
+           Intermediate, Resistant, UninterpretableAST, combined, PercentResistant))
+
+names(d7)
+
+# NOW I NEED TO PUT BACK IN THE SINGLE 3GC ANTIBIOTICS!!
+a1 <- adataAS %>% 
+  filter(Antibiotic %in%c("CTX", "CAZ", "CRO") & Pathogen=="ESCCOL" & Specimen=="BLOOD") %>%
+  mutate(PercentResistant = ((coalesce(Resistant,0)/(coalesce(InterpretableAST,0))*100))
+  )%>%
+  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, DemographicsOrigin, 
+           NumSampledPatients, TotalSpecimenIsolates, SpecimenIsolateswithAST, 
+           TotalPathogenIsolates, PathogenIsolateswithAST, TotalASTpathogenAntibiotic, InterpretableAST, Susceptible, 
+           Intermediate, Resistant, UninterpretableAST, combined, PercentResistant))
+
+names(a1)
+names(d7)
+d8 = rbind(d7,a1)
 
 # Export data
 write.csv(adataAS, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_linked/EI_AMRdtaINT_ANALYSES_noTESTING.csv")) 
