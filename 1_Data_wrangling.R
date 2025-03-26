@@ -646,7 +646,7 @@ adataAS <- adataAS %>%
   ))
 
 # Export data
-write.csv(adataAS, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_linked/EI_AMRdtaINT_ANALYSES.csv")) 
+write.csv(adataAS, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_linked/EI_AMRdtaINT_ANALYSES_noTESTING.csv")) 
 # I SAVED THIS DATASET FROM ANOTHER SCRIPT; NEED TO CHECK STILL WHICH SCRIPT. FOR NOW HAVE WRITTEN IT 
 # HERE AS THE ABOVE CODE SHOULD DO WHAT I DID THERE
 
