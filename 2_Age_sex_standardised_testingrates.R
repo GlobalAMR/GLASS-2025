@@ -348,7 +348,7 @@ adataAS <- adataAS %>%
   ))
 table(adataAS$AgeCat10, adataAS$AgeCatBig)
 
-enough_agebig = adataAS %>% ungroup()%>% filter(!is.na(AgeCatBig)) %>%
+enough_agebig = adataAS %>% ungroup()%>% filter(AgeCatBig!="UnkAge") %>%
   group_by(WHORegionCode, Iso3, Year, Specimen, PathogenName, AntibioticName, AgeCatBig) %>%
   summarise(InterpretableAST = sum(InterpretableAST)) %>%
   mutate(enough = ifelse(InterpretableAST>=10, "Yes", "No")) 
@@ -872,14 +872,14 @@ d5 <- d4 %>%
     enough = ifelse(total_AST >= 10, "Yes", "No")
   )
 
-da = d5 %>% filter(is.na(AgeCatBig)) %>%
+da = d5 %>% filter(AgeCatBig=="UnkAge") %>%
   group_by(WHORegionCode, Iso3, Specimen, PathogenName, Grouping, combined) %>%
   summarise(p_age_ok = ifelse(proportion_ASTAge<0.15, "Yes", "No"),
             p_age_m = proportion_ASTAge)
 
 d6 = left_join(d5,da)
 
-d7 = d6 %>% filter(!is.na(AgeCatBig)) %>%
+d7 = d6 %>% filter(AgeCatBig!="UnkAge") %>%
   mutate(
     p_age_ok = ifelse(is.na(p_age_m), "Yes", p_age_ok),
     p_age_m = ifelse(is.na(p_age_m), 0, p_age_m),
@@ -893,7 +893,7 @@ table(d7$use_for_st2)
 table(d7$use_for_st4)
 
 # Criteria 1: Based on minimum 10 isolates per age group and not more than 15% missing
-d_insuf <- d7 %>% filter(!is.na(AgeCatBig)) %>%
+d_insuf <- d7 %>% filter(AgeCatBig!="UnkAge") %>%
  group_by(Iso3, combined) %>%  # Group by country
    summarise(
      has_insufficient = any(use_for_st == "No")  # Check if any combination has insufficient samples
@@ -945,7 +945,7 @@ table(d_insuf$Iso3, d_insuf$has_insufficient)
 
 
 # Criteria 2: Based on minimum not more than 15% missing missing per age group only
-d_insuf2 <- d7 %>% filter(!is.na(AgeCatBig)) %>%
+d_insuf2 <- d7 %>% filter(AgeCatBig!="UnkAge") %>%
   group_by(Iso3, combined) %>%  # Group by country
   summarise(
     has_insufficient2 = any(use_for_st2 == "No")  # Check if any combination has insufficient samples
@@ -1002,7 +1002,7 @@ d10 = left_join(d9, standard_pop_data_AgeBig, by = c("AgeCatBig"))
 
 # Now filter on those countries and drug-bug combinations that have enough data
 # Criteria 1
-d11 = d10 %>% filter(is.na(has_insufficient), !is.na(AgeCatBig)) %>%
+d11 = d10 %>% filter(is.na(has_insufficient), AgeCatBig!="UnkAge") %>%
   mutate(BCI_million = total_AST/TotalPopulation*1000000)
 
 st_rates = d11 %>% group_by(WHORegionCode, Iso3, Specimen, PathogenName, Grouping,combined) %>% 
@@ -1034,7 +1034,7 @@ p0 = ggplot(st_ratesm, aes(x = WHORegionCode, y = st_BCI_million_median, color =
 p0
 
 # Criteria 2
-d12 = d10 %>% filter(is.na(has_insufficient2), !is.na(AgeCatBig)) %>%
+d12 = d10 %>% filter(is.na(has_insufficient2), AgeCatBig!="UnkAge") %>%
   mutate(BCI_million = total_AST/TotalPopulation*1000000)
 
 st_rates2 = d12 %>% group_by(WHORegionCode, Iso3, Specimen, PathogenName, Grouping,combined) %>% 
@@ -1152,14 +1152,14 @@ c5 <- c4 %>%
     proportion_ASTAge = total_AST / sum(total_AST),  # Calculate proportion within each AgeCat10
   )
 
-da = c5 %>% filter(is.na(AgeCatBig)) %>%
+da = c5 %>% filter(AgeCatBig=="UnkAge") %>%
   group_by(WHORegionCode, Iso3, Specimen, PathogenName, Grouping, combined) %>%
   summarise(p_age_ok = ifelse(proportion_ASTAge<0.15, "Yes", "No"),
             p_age_m = proportion_ASTAge)
 
 c6 = left_join(c5,da)
 
-c7 = c6 %>% filter(!is.na(AgeCatBig=="UnkAge")) %>%
+c7 = c6 %>% filter(AgeCatBig!="UnkAge") %>%
   mutate(
     p_age_ok = ifelse(is.na(p_age_m), "Yes", p_age_ok),
     p_age_m = ifelse(is.na(p_age_m), 0, p_age_m),
@@ -1168,7 +1168,7 @@ c7 = c6 %>% filter(!is.na(AgeCatBig=="UnkAge")) %>%
 
 table(c7$use_for_st3)
 
-c_insuf <- c7 %>% filter(!is.na(AgeCatBig)) %>%
+c_insuf <- c7 %>% filter(AgeCatBig!="UnkAge") %>%
   group_by(Iso3, combined) %>%  # Group by country
   summarise(
     has_insufficient3 = any(use_for_st3 == "No")  # Check if any combination has insufficient samples
@@ -1222,7 +1222,7 @@ c10 = left_join(c9, standard_pop_data_AgeBig, by = c("AgeCatBig"))
 
 # Now filter on those countries and drug-bug combinations that have enough data
 # Criteria 3
-c11 = c10 %>% filter(is.na(has_insufficient3), !is.na(AgeCatBig)) %>%
+c11 = c10 %>% filter(is.na(has_insufficient3), AgeCatBig!="UnkAge") %>%
   mutate(BCI_million = total_AST/TotalPopulation*1000000)
 
 st_rates3 = c11 %>% group_by(WHORegionCode, Iso3, Specimen, PathogenName, Grouping,combined) %>% 
@@ -1634,6 +1634,9 @@ pdf(file=paste0(dirOutput,"/Analyses/Section3.3_Surveillance_coverage/Testing_co
 print(panel_plot)
 #}
 dev.off()
+
+# MAKE SURE THAT UNKNOWN AGE IS RECOGNISED AS CHARACTER, AS OTHERWISE WILL HAVE DIFFERENT DATASETS WHEN FITTING MODEL WITHOUT AGE AND SEX
+table(f3$AgeCat10, useNA="always")
 
 # NOW SAVE DATASETS
 write.csv(f3, paste0(dirDataNew, "/EI_AMRdtaINT_ANALYSES.csv"))
