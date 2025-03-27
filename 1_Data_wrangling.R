@@ -411,7 +411,8 @@ adataNT <- adataNT %>%
       TRUE ~ NA_character_  # Default case, if something unexpected appears
     )
   )
-table(adataNT$AgeCat10)   
+table(adataNT$AgeCat10, useNA="always")   
+table(adataNT$Sex, useNA="always")   
 
 # Group by 'DemographicsOrigin' and sum up the selected columns
 adataNT_c <- adataNT %>%
@@ -433,6 +434,8 @@ adataNT_c <- adataNT %>%
   rename(
     DemographicsOrigin = "DemographicsOrigin2"
   )
+
+setdiff(unique(adataNT_c$DemographicsOrigin), unique(adataNT$DemographicsOrigin2)) # ALL PRESENT
 
 adataNT_c$row = c(1:nrow(adataNT_c))
 
@@ -460,7 +463,7 @@ summarized_data2 <- adataNT %>%
 # BELOW IS SLIGHTLY ODD IN THAT I AM TAKING THE MAX OVER AGE, ORIGIN, ETC
 # Target antibiotics for 3GC and Methicillin-resistance
 f_rm <- adataNT_c %>% 
-  group_by(Year, Specimen, PathogenName, Iso3, AgeCat10, DemographicsOrigin) %>% 
+  group_by(Year, Specimen, PathogenName, Iso3, AgeCat10, Sex, DemographicsOrigin) %>% 
   summarise(tgc_ab=sum(Antibiotic =="CTX" | Antibiotic =="CAZ" | Antibiotic =="CRO"),
             mt_ab=sum(Antibiotic =="OXA" | Antibiotic =="FOX"))%>% 
   as.data.frame() 
@@ -478,7 +481,7 @@ d <- adataNT_c %>%
     TRUE ~ AntibioticName
   ))
 
-d2<-merge(d,f_rm, by=c("Year", "Specimen", "PathogenName", "Iso3", "DemographicsOrigin", "AgeCat10"), all.x=TRUE)
+d2<-merge(d,f_rm, by=c("Year", "Specimen", "PathogenName", "Iso3", "DemographicsOrigin", "AgeCat10", "Sex"), all.x=TRUE)
 #d2$tgc_ab = ifelse(!d2$AntibioticName2 %in% c('Third-generation cephalosporins'), NA, d2$tgc_ab)
 #d2$mt_ab = ifelse(!d2$AntibioticName2 %in% c('Methicillin resistance'), NA, d2$mt_ab)
 
@@ -502,7 +505,7 @@ d5 <- d4  %>%
 
 d6 <- d5 %>%
   as.data.frame() %>%
-  group_by(Specimen, PathogenName, AntibioticName2, Iso3, Year, AgeCat10, DemographicsOrigin) %>%
+  group_by(Specimen, PathogenName, AntibioticName2, Iso3, Year, AgeCat10, Sex, DemographicsOrigin) %>%
   slice_max(PercentResistant, with_ties = FALSE) %>%
   as.data.frame()
 
@@ -518,7 +521,7 @@ n_unique_observations - length(d6$combined) # No duplicates
 
 d7 <- d6 %>% select(-c(AntibioticName, tgc_ab, mt_ab, RemoveRecord)) %>%
   rename(AntibioticName = AntibioticName2) %>%
-  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, DemographicsOrigin, 
+  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, Sex, DemographicsOrigin, 
            NumSampledPatients, TotalSpecimenIsolates, SpecimenIsolateswithAST, 
            TotalPathogenIsolates, PathogenIsolateswithAST, TotalASTpathogenAntibiotic, InterpretableAST, Susceptible, 
            Intermediate, Resistant, UninterpretableAST, combined, PercentResistant))
@@ -532,7 +535,7 @@ a1 <- adataNT_c %>%
   filter(Antibiotic %in%c("CTX", "CAZ", "CRO") & Pathogen=="ESCCOL" & Specimen=="BLOOD") %>%
   mutate(PercentResistant = ((coalesce(Resistant,0)/(coalesce(InterpretableAST,0))*100))
   )%>%
-  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, DemographicsOrigin, 
+  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, Sex, DemographicsOrigin, 
            NumSampledPatients, TotalSpecimenIsolates, SpecimenIsolateswithAST, 
            TotalPathogenIsolates, PathogenIsolateswithAST, TotalASTpathogenAntibiotic, InterpretableAST, Susceptible, 
            Intermediate, Resistant, UninterpretableAST, combined, PercentResistant))
@@ -554,10 +557,15 @@ d9$AntibioticName[d9$AntibioticName=="Cefotaxime "] = "Cefotaxime"
 #table(d9$AntibioticName[d9$Year==2022&d9$AntibioticName%in%c("Cefotaxime","Ceftazidime","Ceftriaxone","Third-generation cephalosporins")], d9$Iso3[d9$Year==2022&d9$AntibioticName%in%c("Cefotaxime","Ceftazidime","Ceftriaxone","Third-generation cephalosporins")])
 
 d10 = left_join(d9, pdataDM)
+table(d10$DemographicsOrigin, useNA="always")
+table(d10$AgeCat10, useNA="always")
+table(d10$Sex, useNA="always")
+
+table(adataNT_c$Sex, useNA="always")
+table(adataNT_c$AgeCat10, useNA="always")
 
 # Export data# ExporpdataDMt data
 write.csv(d10, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_linked/EI_AMRdtaINT_Pop_Country_140325_EV.csv"))
-
 
 # Remove space at the end of antibiotic name so can be found in both datasets
 adataDM$AntibioticName <- sub(" $", "", adataDM$AntibioticName)
@@ -653,7 +661,7 @@ adataAS <- adataAS %>%
 # BELOW IS SLIGHTLY ODD IN THAT I AM TAKING THE MAX OVER AGE, ORIGIN, ETC
 # Target antibiotics for 3GC and Methicillin-resistance
 f_rm <- adataAS %>% 
-  group_by(Year, Specimen, PathogenName, Iso3, AgeCat10, DemographicsOrigin) %>% 
+  group_by(Year, Specimen, PathogenName, Iso3, AgeCat10, Sex, DemographicsOrigin) %>% 
   summarise(tgc_ab=sum(Antibiotic =="CTX" | Antibiotic =="CAZ" | Antibiotic =="CRO"),
             mt_ab=sum(Antibiotic =="OXA" | Antibiotic =="FOX"))%>% 
   as.data.frame() 
@@ -671,7 +679,7 @@ d <- adataAS %>%
     TRUE ~ AntibioticName
   ))
 
-d2<-merge(d,f_rm, by=c("Year", "Specimen", "PathogenName", "Iso3", "AgeCat10", "DemographicsOrigin"), all.x=TRUE)
+d2<-merge(d,f_rm, by=c("Year", "Specimen", "PathogenName", "Iso3", "AgeCat10", "Sex", "DemographicsOrigin"), all.x=TRUE)
 #d2$tgc_ab = ifelse(!d2$AntibioticName2 %in% c('Third-generation cephalosporins'), NA, d2$tgc_ab)
 #d2$mt_ab = ifelse(!d2$AntibioticName2 %in% c('Methicillin resistance'), NA, d2$mt_ab)
 
@@ -695,7 +703,7 @@ d5 <- d4  %>%
 
 d6 <- d5 %>%
   as.data.frame() %>%
-  group_by(Specimen, PathogenName, AntibioticName2, Iso3, Year, AgeCat10, DemographicsOrigin) %>%
+  group_by(Specimen, PathogenName, AntibioticName2, Iso3, Year, AgeCat10, Sex, DemographicsOrigin) %>%
   slice_max(PercentResistant, with_ties = FALSE) %>%
   as.data.frame()
 
@@ -704,14 +712,14 @@ unique(d6$combined)
 
 # Check if duplicates removed
 n_unique_observations <- d6 %>%
-  distinct(combined, Iso3, Year, AgeCat10, DemographicsOrigin) %>%
+  distinct(combined, Iso3, Year, AgeCat10, Sex, DemographicsOrigin) %>%
   nrow()
 
 n_unique_observations - length(d6$combined) # No duplicates
 
 d7 <- d6 %>% select(-c(AntibioticName, tgc_ab, mt_ab, RemoveRecord)) %>%
   rename(AntibioticName = AntibioticName2) %>%
-  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, DemographicsOrigin, 
+  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, Sex, DemographicsOrigin, 
            NumSampledPatients, TotalSpecimenIsolates, SpecimenIsolateswithAST, 
            TotalPathogenIsolates, PathogenIsolateswithAST, TotalASTpathogenAntibiotic, InterpretableAST, Susceptible, 
            Intermediate, Resistant, UninterpretableAST, combined, PercentResistant))
@@ -723,7 +731,7 @@ a1 <- adataAS %>%
   filter(Antibiotic %in%c("CTX", "CAZ", "CRO") & Pathogen=="ESCCOL" & Specimen=="BLOOD") %>%
   mutate(PercentResistant = ((coalesce(Resistant,0)/(coalesce(InterpretableAST,0))*100))
   )%>%
-  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, DemographicsOrigin, 
+  select(c(Year, Iso3, Specimen, PathogenName,Pathogen, Antibiotic, AntibioticName, AgeCat10, Sex, DemographicsOrigin, 
            NumSampledPatients, TotalSpecimenIsolates, SpecimenIsolateswithAST, 
            TotalPathogenIsolates, PathogenIsolateswithAST, TotalASTpathogenAntibiotic, InterpretableAST, Susceptible, 
            Intermediate, Resistant, UninterpretableAST, combined, PercentResistant))
@@ -731,6 +739,15 @@ a1 <- adataAS %>%
 names(a1)
 names(d7)
 d8 = rbind(d7,a1)
+
+table(d8$Sex, useNA="always")
+table(adataAS$Sex, useNA="always")
+
+table(d8$AgeCat10, useNA="always")
+table(adataAS$AgeCat10, useNA="always")
+
+table(d8$DemographicsOrigin,d8$Sex)
+table(d8$DemographicsOrigin,d8$Age)
 
 # Export data
 write.csv(adataAS, paste0(dirDataNew, "/GLASS_final_curated/GLASS_final_curated_linked/EI_AMRdtaINT_ANALYSES_noTESTING.csv")) 
