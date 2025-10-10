@@ -1,5 +1,4 @@
-<UNDER DEVELOPMENT STILL, DON'T FORK YET! >
-# GLASS-report 
+# GLASS-report <UNDER DEVELOPMENT STILL, DON'T FORK YET!>
 This repository provides Rcode for the figures featuring in the GLASS 2024 report
 
 ## 2025 GLASS report - Objectives 
