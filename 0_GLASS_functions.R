@@ -2,6 +2,7 @@
 # FUNCTIONS USED IN GLASS REPORT
 ######################################################
 library(dplyr)
+library(ggtext)
 
 # CHAPTER 3
 ######################################################
@@ -136,8 +137,8 @@ plot_bci_map_chlor <- function(shapefile, bci_data, year, specimen, palette,
   labels = ifelse(labels=="0", "", labels)
   specimen_title = ifelse(specimen=="BLOOD", "Bloodstream",
                           ifelse(specimen=="URINE", "Urinary tract",
-                                 ifelse(specimen == "STOOL", "Gastrointestinal tract",
-                                        ifelse(specimen=="UROGENITAL", "Gonorrhoa",NA))))
+                                 ifelse(specimen == "STOOL", "Gastrointestinal",
+                                        ifelse(specimen=="UROGENITAL", "Urogenital",NA))))
   
   # Plot the map with BCI bubbles
   ggplot() +
@@ -372,85 +373,104 @@ plot_bci_map_combined <- function(shapefile, bci_data, year, specimen, who_regio
 # REGIONAL BCI PER MILLION SLOPES AND PREDICTIONS (Fig 3.4)
 #-------------------------------------------------------------------
 # EXTRACT COUNTRY-LEVEL SLOPES
-summarize_regional_and_global_slopes <- function(fit, year_popdata, pdata, cdata, region_var = "WHORegionName", specimen) {
+summarize_regional_and_global_slopes <- function(data, fit, year_popdata, pdata, cdata, region_var = "WHORegionName", specimen, pathogen=F) {
+  
+  sp = ifelse(specimen=="BSI", "BLOOD",
+              ifelse(specimen == "UTI", "URINE",
+                     ifelse(specimen == "GI", "STOOL", 
+                            ifelse(specimen=="gonorrhoea","UROGENITAL",specimen))))
+  if(pathogen==F){
+  d = data %>% filter(Specimen == sp)
+  }else{
+    d = data %>%filter(combined==sp)
+  }
+    
+  d$Year_c = scale(d$Year, center=T)
+  
   # Extract posterior samples for fixed and random effects
   posterior_samples <- as_draws_df(fit)
   
-  # Extract fixed effect for Year_c
+  # Fixed effect for Year_c
   fixed_effect_samples <- posterior_samples$b_Year_c
   
-  # Extract column names for random effects of Year_c
+  # Random effects for Year_c
   random_effect_columns <- grep("^r_Iso3\\[.*?,Year_c\\]$", colnames(posterior_samples), value = TRUE)
-  
-  # Subset the random effects for Year_c
   random_effect_samples <- posterior_samples[, random_effect_columns]
   
-  # Combine fixed and random slopes for each posterior draw
+  # Combine fixed and random slopes
   posterior_country_slopes <- sweep(as.matrix(random_effect_samples), 1, fixed_effect_samples, FUN = "+")
-  colnames(posterior_country_slopes) <- gsub("r_Iso3\\[|,Year_c\\]", "", colnames(posterior_country_slopes))  # Clean column names
+  colnames(posterior_country_slopes) <- gsub("r_Iso3\\[|,Year_c\\]", "", colnames(posterior_country_slopes))
   
-  # Filter population data for the specified year
+  # Filter population data for specified year
   pdata2022 <- pdata %>%
     filter(Year == year_popdata) %>%
-    dplyr::select(Iso3, TotalPopulation)
+    dplyr::select(Iso3, TotalPopulation) %>%
+    left_join(cdata %>% dplyr::select(WHORegionName, WHORegionCode, Iso3), by = "Iso3")
   
-  # Join with region data
-  pdata2022 <- left_join(pdata2022, cdata %>% dplyr::select(WHORegionName, WHORegionCode, Iso3), by = "Iso3")
-  
-  # Create long format of the country-level slopes
-  posterior_country_long <- posterior_country_slopes %>%
-    as.data.frame() %>%
+  # Long format for country-level slopes
+  posterior_country_long <- as.data.frame(posterior_country_slopes) %>%
     mutate(draw = 1:nrow(.)) %>%
-    pivot_longer(
-      cols = -draw,
-      names_to = "Iso3",
-      values_to = "country_slope"
-    )
+    pivot_longer(cols = -draw, names_to = "Iso3", values_to = "country_slope") %>%
+    left_join(pdata2022, by = "Iso3")
   
-  # Join with population data
-  posterior_country_long <- left_join(posterior_country_long, pdata2022, by = "Iso3")
+  # Identify countries with at least 3 years of data
+  valid_countries <- d %>%
+    group_by(Iso3) %>%
+    summarise(n_years = n_distinct(Year)) %>%
+    filter(n_years >= 3) %>%
+    pull(Iso3)
   
-  # Compute weighted mean slopes for each region
+  # Weighted mean slope per region per draw
   posterior_regional_slopes <- posterior_country_long %>%
+    filter(Iso3 %in% valid_countries) %>%
     group_by(draw, !!sym(region_var)) %>%
     summarise(
-      weighted_mean_slope = sum(country_slope * TotalPopulation) / sum(TotalPopulation),
+      weighted_mean_slope = sum(country_slope * TotalPopulation, na.rm = TRUE) / sum(TotalPopulation, na.rm = TRUE),
       .groups = "drop"
     )
   
-  # summarise posterior trends for each region
+  # Summarize posterior trends for regions
   regional_trend_summary <- posterior_regional_slopes %>%
     group_by(!!sym(region_var)) %>%
     summarise(
       mean_slope = mean(weighted_mean_slope),
       median_slope = median(weighted_mean_slope),
       Q2.5 = quantile(weighted_mean_slope, 0.025),
+      Q10 = quantile(weighted_mean_slope, 0.10),
+      Q25 = quantile(weighted_mean_slope, 0.25),
+      Q75 = quantile(weighted_mean_slope, 0.75),
+      Q90 = quantile(weighted_mean_slope, 0.90),
       Q97.5 = quantile(weighted_mean_slope, 0.975),
       .groups = "drop"
     )
   
-  # Compute the global weighted mean slope
+  # Global weighted mean slope per draw
   posterior_global_trends <- posterior_country_long %>%
+    filter(Iso3 %in% valid_countries) %>%
     group_by(draw) %>%
     summarise(
-      global_weighted_mean_slope = sum(country_slope * TotalPopulation) / sum(TotalPopulation),
+      global_weighted_mean_slope = sum(country_slope * TotalPopulation, na.rm = TRUE) / sum(TotalPopulation, na.rm = TRUE),
       .groups = "drop"
     )
   
-  # summarise global trend
+  # Summarize global trend
   global_trend_summary <- posterior_global_trends %>%
     summarise(
       mean_slope = mean(global_weighted_mean_slope),
       median_slope = median(global_weighted_mean_slope),
       Q2.5 = quantile(global_weighted_mean_slope, 0.025),
+      Q10 = quantile(global_weighted_mean_slope, 0.10),
+      Q25 = quantile(global_weighted_mean_slope, 0.25),
+      Q75 = quantile(global_weighted_mean_slope, 0.75),
+      Q90 = quantile(global_weighted_mean_slope, 0.90),
       Q97.5 = quantile(global_weighted_mean_slope, 0.975)
     ) %>%
-    mutate(WHORegionName = "Global") %>%
-    dplyr::select(WHORegionName, mean_slope, median_slope, Q2.5, Q97.5)
+    mutate(!!region_var := "Global") %>%
+    dplyr::select(!!sym(region_var), mean_slope, median_slope, Q2.5, Q10, Q25, Q75, Q90, Q97.5)
   
-  # Combine regional and global summaries
+  # Combine regional and global
   regional_trend_summary <- bind_rows(regional_trend_summary, global_trend_summary)
-  regional_trend_summary$specimen = specimen
+  regional_trend_summary$specimen <- specimen
   
   return(regional_trend_summary)
 }
@@ -458,127 +478,242 @@ summarize_regional_and_global_slopes <- function(fit, year_popdata, pdata, cdata
 
 # ESTIMATE EXPECTED REGIONAL TRENDS (Fig 3.4)
 #------------------------------------------------------------------------------------
-# Define centering year for Year_c
-generate_predictions_summary <- function(fit, data, year_range, pdata, cdata, specimen, specimen_filter, pathogen=T) {
 
-  # Filter population data for the specified year
-  # pdata2022 <- pdata %>%
-  #   filter(Year %in% year_range) %>%
-  #   dplyr::select(Iso3, TotalPopulation)
-  #
-  # # Join with region data
-  # pdata2022 <- left_join(pdata2022, cdata %>% dplyr::select(WHORegionName, WHORegionCode, Iso3), by = "Iso3")
-  #
-
-  pdata = left_join(pdata, cdata %>% dplyr::select(WHORegionName, WHORegionCode, Iso3), by = c("Iso3"))
-
-  posterior_samples <- as_draws_df(fit)
-
-  # Extract random and fixed effects from posterior samples
-  random_intercept_columns <- grep("^r_Iso3\\[.*?,Intercept\\]$", colnames(posterior_samples), value = TRUE)
-  random_slope_columns <- grep("^r_Iso3\\[.*?,Year_c\\]$", colnames(posterior_samples), value = TRUE)
-
-  # Extract random intercepts and slopes
-  random_intercepts <- posterior_samples[, random_intercept_columns]
-  random_slopes <- posterior_samples[, random_slope_columns]
-
-  # Clean column names for Iso3
-  colnames(random_intercepts) <- gsub("r_Iso3\\[|,Intercept\\]", "", colnames(random_intercepts))
-  colnames(random_slopes) <- gsub("r_Iso3\\[|,Year_c\\]", "", colnames(random_slopes))
-
-  # Combine fixed and random effects
-  posterior_country_intercepts <- sweep(as.matrix(random_intercepts), 1, posterior_samples$b_Intercept, FUN = "+")
-  posterior_country_slopes <- sweep(as.matrix(random_slopes), 1, posterior_samples$b_Year_c, FUN = "+")
-
-  # Reshape intercepts and slopes to long format
-  posterior_country_long <- posterior_country_intercepts %>%
-    as.data.frame() %>%
-    mutate(draw = 1:nrow(.)) %>%
-    pivot_longer(-draw, names_to = "Iso3", values_to = "country_intercept") %>%
-    left_join(
-      posterior_country_slopes %>%
-        as.data.frame() %>%
-        mutate(draw = 1:nrow(.)) %>%
-        pivot_longer(-draw, names_to = "Iso3", values_to = "country_slope"),
-      by = c("Iso3", "draw")
-    )
-
+generate_predictions_summary <- function(data, fit, year_range, pdata, cdata, specimen, specimen_filter, pathogen=T) {
+  
   # Filter the dataset for the current drug-bug combination (only when generating predictions for pathogen specific data)
   if(pathogen){
-  data_subset <- data %>% filter(combined == drug_bug)
+    d <- data %>% filter(combined == drug_bug)
   }else{
-  data_subset = data %>% filter(Specimen == specimen_filter)
+    d = data %>% filter(Specimen == specimen_filter)
   }
-
-  data_subset$Year_c = scale(data_subset$Year, center=TRUE, scale=FALSE)[,1] # Just center
-  unique_years <- unique(data_subset[, c("Year", "Year_c")])
-
-
-  # Generate predictions for each year
-  posterior_country_long <- posterior_country_long %>%
-    mutate(Year = list(seq(min(year_range), max(year_range)))) %>%
-    unnest(Year) %>%
-    left_join(unique_years)
-
-  # Merge with population and region data
-  posterior_country_long <- posterior_country_long %>%
-    left_join(pdata, by = c("Iso3", "Year"))
-
-
-  posterior_country_long = posterior_country_long %>%
-    mutate(
-      prediction_log = country_intercept + country_slope * Year_c,
-      prediction = exp(prediction_log) * 1e6  # Adjust scale as needed
-    )
-
-  # Calculate regional predictions
+  
+  d$Year_c = scale(d$Year, center=T)
+  
+  year_year_c = d %>% dplyr::select(Year, Year_c) %>%
+    distinct()
+  
+  # Filter population data for the specified year
+  pdata2023 <- pdata %>%
+    filter(Year == year_range[2]) %>%
+    dplyr::select(Iso3, TotalPopulation)
+  
+  # Join with region data
+  pdata2023 <- left_join(pdata2023, cdata %>% dplyr::select(WHORegionName, WHORegionCode, Iso3), by = "Iso3")
+  
+  newdata <- expand.grid(
+    Iso3 = unique(d$Iso3),
+    Year = seq(year_range[1], year_range[2])
+  ) %>%
+    left_join(pdata %>%dplyr::select(c(Iso3,Year,TotalPopulation)), by = c("Year", "Iso3"))
+  
+  newdata = left_join(newdata, year_year_c)
+  
+  # Make sure all needed columns are present
+  pred_matrix <- posterior_epred(fit, newdata = newdata)
+  
+  # pred_matrix: rows = posterior draws, columns = rows of newdata
+  # Convert to long format
+  posterior_country_long <- pred_matrix %>%
+    as.data.frame() %>%
+    mutate(draw = 1:nrow(.)) %>%
+    pivot_longer(-draw, names_to = "rowid", values_to = "prediction") %>%
+    mutate(rowid = as.integer(gsub("V", "", rowid))) %>%
+    left_join(newdata %>% mutate(rowid = row_number()), by = "rowid") %>%
+    mutate(prediction = prediction/TotalPopulation*1e6)
+  
+  posterior_country_long = left_join(posterior_country_long,cdata %>% dplyr::select(Iso3, WHORegionName))
+  
+  # Identify countries with at least 3 years of data
+  valid_countries <- posterior_country_long %>%
+    group_by(Iso3) %>%
+    summarise(n_years = n_distinct(Year)) %>%
+    filter(n_years >= 3) %>%
+    pull(Iso3)
+  
+  # Calculate regional predictions - weighted 
   posterior_regional_predictions <- posterior_country_long %>%
+    filter(Iso3 %in% valid_countries) %>%
     group_by(draw, WHORegionName, Year) %>%
     summarise(
       weighted_prediction = sum(prediction * TotalPopulation) / sum(TotalPopulation),
       .groups = "drop"
     )
-
-  # Calculate global predictions
+  
+  # Calculate regional predictions - crude median prediction by region and year
+  posterior_regional_median_prediction <- posterior_country_long %>%
+    filter(Iso3 %in% valid_countries) %>%
+    group_by(draw, WHORegionName, Year) %>%
+    summarise(
+      crude_prediction = median(prediction),
+      .groups = "drop"
+    )
+  
+  # Combine weighted mean and median predictions
+  posterior_regional_predictions <- posterior_regional_predictions %>%
+    left_join(posterior_regional_median_prediction, by = c("draw", "WHORegionName", "Year"))
+  
+  
+  # Calculate global weighted predictions
   posterior_global_predictions <- posterior_country_long %>%
+    filter(Iso3 %in% valid_countries) %>%
     group_by(draw, Year) %>%
     summarise(
       weighted_prediction = sum(prediction * TotalPopulation) / sum(TotalPopulation),
       .groups = "drop"
-    )
-
-  # summarise posterior distributions for regions
-  regional_trend_summary <- posterior_regional_predictions %>%
-    group_by(WHORegionName, Year) %>%
+    )%>%
+    mutate(WHORegionName = "Global") %>%
+    dplyr::select(c(draw, WHORegionName,Year, weighted_prediction))
+  
+  
+  # Global crude median
+  posterior_global_median_prediction <- posterior_country_long %>%
+    filter(Iso3 %in% valid_countries) %>%
+    group_by(draw, Year) %>%
     summarise(
-      mean_prediction = mean(weighted_prediction),
-      median_prediction = median(weighted_prediction),
-      Q2.5 = quantile(weighted_prediction, 0.025),
-      Q97.5 = quantile(weighted_prediction, 0.975),
-      .groups = "drop"
-    )
-
-  # summarise posterior distributions globally
-  global_trend_summary <- posterior_global_predictions %>%
-    group_by(Year) %>%
-    summarise(
-      mean_prediction = mean(weighted_prediction),
-      median_prediction = median(weighted_prediction),
-      Q2.5 = quantile(weighted_prediction, 0.025),
-      Q97.5 = quantile(weighted_prediction, 0.975),
+      crude_prediction = median(prediction),
       .groups = "drop"
     ) %>%
     mutate(WHORegionName = "Global") %>%
-    dplyr::select(WHORegionName, Year, mean_prediction, median_prediction, Q2.5, Q97.5)
-
+    dplyr::select(c(draw, WHORegionName,Year, crude_prediction))
+  
+  # Combine global mean and median
+  posterior_global_predictions <- posterior_global_predictions %>%
+    left_join(posterior_global_median_prediction, by = c("draw","WHORegionName", "Year"))
+  
+  # Summarize posterior distributions for regions
+  regional_trend_summary <- posterior_regional_predictions %>%
+    group_by(WHORegionName, Year) %>%
+    summarise(
+      mean_weighted_prediction = mean(weighted_prediction),
+      median_weighted_prediction = median(weighted_prediction),
+      Q2.5_weighted_prediction = quantile(weighted_prediction, 0.025),
+      Q97.5_weighted_prediction = quantile(weighted_prediction, 0.975),
+      mean_crude_prediction = mean(crude_prediction),
+      median_crude_prediction = median(crude_prediction),
+      Q2.5_crude_prediction = quantile(crude_prediction, 0.025),
+      Q97.5_crude_prediction = quantile(crude_prediction, 0.975),
+      .groups = "drop"
+    )
+  
+  # Create a wide version to compute 2023 - 2016 differences per draw
+  regional_prediction_diff <- posterior_regional_predictions %>%
+    filter(Year %in% c(2016, 2023)) %>%
+    pivot_wider(
+      names_from = Year,
+      values_from = c(weighted_prediction, crude_prediction),
+      names_glue = "{.value}_{Year}"
+    ) %>%
+    mutate(
+      # Absolute differences
+      diff_weighted = weighted_prediction_2023 - weighted_prediction_2016,
+      diff_crude = crude_prediction_2023 - crude_prediction_2016,
+      
+      # Percentage changes
+      pct_change_weighted = 100 * diff_weighted / weighted_prediction_2016,
+      pct_change_crude = 100 * diff_crude / crude_prediction_2016
+    )
+  
+  # Summarize across draws for each region
+  regional_prediction_diff_summary <- regional_prediction_diff %>%
+    group_by(WHORegionName) %>%
+    summarise(
+      # Absolute differences
+      diff_weighted_median = quantile(diff_weighted, 0.5),
+      diff_weighted_Q2.5 = quantile(diff_weighted, 0.025),
+      diff_weighted_Q97.5 = quantile(diff_weighted, 0.975),
+      
+      diff_crude_median = quantile(diff_crude, 0.5),
+      diff_crude_Q2.5 = quantile(diff_crude, 0.025),
+      diff_crude_Q97.5 = quantile(diff_crude, 0.975),
+      
+      # Percent changes
+      pct_change_weighted_median = quantile(pct_change_weighted,0.5),
+      pct_change_weighted_Q2.5 = quantile(pct_change_weighted, 0.025),
+      pct_change_weighted_Q97.5 = quantile(pct_change_weighted, 0.975),
+      
+      pct_change_crude_median = quantile(pct_change_crude, 0.5),
+      pct_change_crude_Q2.5 = quantile(pct_change_crude, 0.025),
+      pct_change_crude_Q97.5 = quantile(pct_change_crude, 0.975),
+      
+      .groups = "drop"
+    )
+  
+  regional_trend_summary <- regional_trend_summary %>%
+    left_join(regional_prediction_diff_summary, by = "WHORegionName")
+  
+  # Summarize posterior distributions globally
+  global_trend_summary <- posterior_global_predictions %>%
+    group_by(WHORegionName, Year) %>%
+    summarise(
+      mean_weighted_prediction = mean(weighted_prediction),
+      median_weighted_prediction = median(weighted_prediction),
+      Q2.5_weighted_prediction = quantile(weighted_prediction, 0.025),
+      Q97.5_weighted_prediction = quantile(weighted_prediction, 0.975),
+      mean_crude_prediction = mean(crude_prediction),
+      median_crude_prediction = median(crude_prediction),
+      Q2.5_crude_prediction = quantile(crude_prediction, 0.025),
+      Q97.5_crude_prediction = quantile(crude_prediction, 0.975),
+      .groups = "drop"
+    ) %>%
+    dplyr::select(WHORegionName, Year, mean_weighted_prediction, median_weighted_prediction,Q2.5_weighted_prediction, 
+                  Q97.5_weighted_prediction,mean_crude_prediction,median_crude_prediction, Q2.5_crude_prediction,Q97.5_crude_prediction)
+  
+  
+  # Create a wide version to compute 2023 - 2016 differences per draw
+  global_prediction_diff <- posterior_global_predictions %>%
+    filter(Year %in% c(2016, 2023)) %>%
+    pivot_wider(
+      names_from = Year,
+      values_from = c(weighted_prediction, crude_prediction),
+      names_glue = "{.value}_{Year}"
+    ) %>%
+    mutate(
+      # Absolute differences
+      diff_weighted = weighted_prediction_2023 - weighted_prediction_2016,
+      diff_crude = crude_prediction_2023 - crude_prediction_2016,
+      
+      # Percentage changes
+      pct_change_weighted = 100 * diff_weighted / weighted_prediction_2016,
+      pct_change_crude = 100 * diff_crude / crude_prediction_2016
+    )
+  
+  # Summarize across draws for each region
+  global_prediction_diff_summary <- global_prediction_diff %>%
+    summarise(
+      # Absolute differences
+      diff_weighted_median = quantile(diff_weighted, 0.5),
+      diff_weighted_Q2.5 = quantile(diff_weighted, 0.025),
+      diff_weighted_Q97.5 = quantile(diff_weighted, 0.975),
+      
+      diff_crude_median = quantile(diff_crude, 0.5),
+      diff_crude_Q2.5 = quantile(diff_crude, 0.025),
+      diff_crude_Q97.5 = quantile(diff_crude, 0.975),
+      
+      # Percent changes
+      pct_change_weighted_median = quantile(pct_change_weighted,0.5),
+      pct_change_weighted_Q2.5 = quantile(pct_change_weighted, 0.025),
+      pct_change_weighted_Q97.5 = quantile(pct_change_weighted, 0.975),
+      
+      pct_change_crude_median = quantile(pct_change_crude, 0.5),
+      pct_change_crude_Q2.5 = quantile(pct_change_crude, 0.025),
+      pct_change_crude_Q97.5 = quantile(pct_change_crude, 0.975),
+      
+      .groups = "drop"
+    ) %>% 
+    mutate(WHORegionName="Global")
+  
+  global_trend_summary <- global_trend_summary %>%
+    left_join(global_prediction_diff_summary, by = "WHORegionName")
+  
   # Combine regional and global summaries
   regional_trend_summary <- bind_rows(regional_trend_summary, global_trend_summary)
-
+  
   # Ensure consistent factor levels for WHORegionName
   regional_trend_summary <- regional_trend_summary %>%
     mutate(
-      WHORegionName = factor(WHORegionName,
-                             levels = c("Global",
+      WHORegionName = factor(WHORegionName, 
+                             levels = c("Global", 
                                         "African Region",
                                         "Region of the Americas",
                                         "South-East Asia Region",
@@ -587,9 +722,142 @@ generate_predictions_summary <- function(fit, data, year_range, pdata, cdata, sp
                                         "Western Pacific Region"))
     )
   regional_trend_summary$specimen = specimen
-
+  
   return(regional_trend_summary)
 }
+
+
+# generate_predictions_summary <- function(fit, data, year_range, pdata, cdata, specimen, specimen_filter, pathogen=T) {
+# 
+#   # Filter population data for the specified year
+#   # pdata2022 <- pdata %>%
+#   #   filter(Year %in% year_range) %>%
+#   #   dplyr::select(Iso3, TotalPopulation)
+#   #
+#   # # Join with region data
+#   # pdata2022 <- left_join(pdata2022, cdata %>% dplyr::select(WHORegionName, WHORegionCode, Iso3), by = "Iso3")
+#   #
+# 
+#   pdata = left_join(pdata, cdata %>% dplyr::select(WHORegionName, WHORegionCode, Iso3), by = c("Iso3"))
+# 
+#   posterior_samples <- as_draws_df(fit)
+# 
+#   # Extract random and fixed effects from posterior samples
+#   random_intercept_columns <- grep("^r_Iso3\\[.*?,Intercept\\]$", colnames(posterior_samples), value = TRUE)
+#   random_slope_columns <- grep("^r_Iso3\\[.*?,Year_c\\]$", colnames(posterior_samples), value = TRUE)
+# 
+#   # Extract random intercepts and slopes
+#   random_intercepts <- posterior_samples[, random_intercept_columns]
+#   random_slopes <- posterior_samples[, random_slope_columns]
+# 
+#   # Clean column names for Iso3
+#   colnames(random_intercepts) <- gsub("r_Iso3\\[|,Intercept\\]", "", colnames(random_intercepts))
+#   colnames(random_slopes) <- gsub("r_Iso3\\[|,Year_c\\]", "", colnames(random_slopes))
+# 
+#   # Combine fixed and random effects
+#   posterior_country_intercepts <- sweep(as.matrix(random_intercepts), 1, posterior_samples$b_Intercept, FUN = "+")
+#   posterior_country_slopes <- sweep(as.matrix(random_slopes), 1, posterior_samples$b_Year_c, FUN = "+")
+# 
+#   # Reshape intercepts and slopes to long format
+#   posterior_country_long <- posterior_country_intercepts %>%
+#     as.data.frame() %>%
+#     mutate(draw = 1:nrow(.)) %>%
+#     pivot_longer(-draw, names_to = "Iso3", values_to = "country_intercept") %>%
+#     left_join(
+#       posterior_country_slopes %>%
+#         as.data.frame() %>%
+#         mutate(draw = 1:nrow(.)) %>%
+#         pivot_longer(-draw, names_to = "Iso3", values_to = "country_slope"),
+#       by = c("Iso3", "draw")
+#     )
+# 
+#   # Filter the dataset for the current drug-bug combination (only when generating predictions for pathogen specific data)
+#   if(pathogen){
+#   data_subset <- data %>% filter(combined == drug_bug)
+#   }else{
+#   data_subset = data %>% filter(Specimen == specimen_filter)
+#   }
+# 
+#   data_subset$Year_c = scale(data_subset$Year, center=TRUE, scale=FALSE)[,1] # Just center
+#   unique_years <- unique(data_subset[, c("Year", "Year_c")])
+# 
+# 
+#   # Generate predictions for each year
+#   posterior_country_long <- posterior_country_long %>%
+#     mutate(Year = list(seq(min(year_range), max(year_range)))) %>%
+#     unnest(Year) %>%
+#     left_join(unique_years)
+# 
+#   # Merge with population and region data
+#   posterior_country_long <- posterior_country_long %>%
+#     left_join(pdata, by = c("Iso3", "Year"))
+# 
+# 
+#   posterior_country_long = posterior_country_long %>%
+#     mutate(
+#       prediction_log = country_intercept + country_slope * Year_c,
+#       prediction = exp(prediction_log) * 1e6  # Adjust scale as needed
+#     )
+# 
+#   # Calculate regional predictions
+#   posterior_regional_predictions <- posterior_country_long %>%
+#     group_by(draw, WHORegionName, Year) %>%
+#     summarise(
+#       weighted_prediction = sum(prediction * TotalPopulation) / sum(TotalPopulation),
+#       .groups = "drop"
+#     )
+# 
+#   # Calculate global predictions
+#   posterior_global_predictions <- posterior_country_long %>%
+#     group_by(draw, Year) %>%
+#     summarise(
+#       weighted_prediction = sum(prediction * TotalPopulation) / sum(TotalPopulation),
+#       .groups = "drop"
+#     )
+# 
+#   # summarise posterior distributions for regions
+#   regional_trend_summary <- posterior_regional_predictions %>%
+#     group_by(WHORegionName, Year) %>%
+#     summarise(
+#       mean_prediction = mean(weighted_prediction),
+#       median_prediction = median(weighted_prediction),
+#       Q2.5 = quantile(weighted_prediction, 0.025),
+#       Q97.5 = quantile(weighted_prediction, 0.975),
+#       .groups = "drop"
+#     )
+# 
+#   # summarise posterior distributions globally
+#   global_trend_summary <- posterior_global_predictions %>%
+#     group_by(Year) %>%
+#     summarise(
+#       mean_prediction = mean(weighted_prediction),
+#       median_prediction = median(weighted_prediction),
+#       Q2.5 = quantile(weighted_prediction, 0.025),
+#       Q97.5 = quantile(weighted_prediction, 0.975),
+#       .groups = "drop"
+#     ) %>%
+#     mutate(WHORegionName = "Global") %>%
+#     dplyr::select(WHORegionName, Year, mean_prediction, median_prediction, Q2.5, Q97.5)
+# 
+#   # Combine regional and global summaries
+#   regional_trend_summary <- bind_rows(regional_trend_summary, global_trend_summary)
+# 
+#   # Ensure consistent factor levels for WHORegionName
+#   regional_trend_summary <- regional_trend_summary %>%
+#     mutate(
+#       WHORegionName = factor(WHORegionName,
+#                              levels = c("Global",
+#                                         "African Region",
+#                                         "Region of the Americas",
+#                                         "South-East Asia Region",
+#                                         "European Region",
+#                                         "Eastern Mediterranean Region",
+#                                         "Western Pacific Region"))
+#     )
+#   regional_trend_summary$specimen = specimen
+# 
+#   return(regional_trend_summary)
+# }
 
 
 # ALTERNATIVE USING TIDYBAYES (DOES NOT WORK PROPERLY YET)
@@ -955,20 +1223,42 @@ plot_bci_spec_trend_cta_fitted <- function(data, specimen, title = specimen, sub
 
 # Testing rate vs AMR 
 plot_amr_test <- function(data, pathogen, specimen, palette,xaxis) {
-  scale = ifelse(xaxis =="BCI_1000000pop", "crude", "standardised")
+  specimen_lab = ifelse(specimen=="BLOOD", "Bloodstream",
+                    ifelse(specimen=="URINE", "Urinary tract",
+                           ifelse(specimen=="STOOL", "Gastrointestinal", "Gonorrhoea")))
+  pathogen_lab = ifelse(pathogen=="Escherichia coli", "E. coli",pathogen)
+  pathogen_lab_md <- paste0("*", pathogen_lab, "*")
+  
+  scale = ifelse(xaxis =="Infections with AST per million population", "crude", "age-standardised")
+  data$WHORegionName = factor(data$WHORegionCode, levels = c("AFR", "AMR", "SEA", "EUR",
+                                                        "EMR", "WPR"),
+                         labels = c("African Region", "Region of the Americas",
+                                    "South-East Asia Region", "European Region",
+                                    "Eastern Mediterranean Region","Western Pacific Region"))
   ggplot(data %>% filter(PathogenName == pathogen, 
                          Specimen == specimen & InReport == "Yes"), 
-         aes(x = !!sym(xaxis), y = amr_rate, col = WHORegionCode, group = AntibioticName)) +
+         aes(x = !!sym(xaxis), y = amr_rate*100, col = WHORegionName, group = AntibioticName)) +
     geom_point(size = 2, alpha = 0.5) +  
     geom_smooth(method = 'lm', formula = y ~ poly(x, 2), col = "black") +
     scale_colour_manual(values = palette) +
     facet_wrap(.~ AntibioticName, ncol = 4, scales = "free") +
     theme_minimal() + 
     labs(
-      title = paste0("Testing rates vs AMR prevalence","(" ,scale, ")"),
-      subtitle = paste0(pathogen, " - ", specimen),
-      x = "BCI per million population",
-      y = "Resistance %"
+      title = paste0("Antibiotic resistance (%) vs surveillance coverage"),
+      subtitle = paste0(specimen_lab, " - ", pathogen_lab_md),
+      x =  paste0("Infections with AST per million population","\n(" ,scale, ")"),
+      y = "Antibiotic resistance (%)",
+      col = NULL
+    )+
+    theme(
+      plot.subtitle = ggtext::element_markdown(14),
+      legend.position = "bottom",
+      plot.title = element_markdown(16),
+      axis.text.y = element_markdown(size = 14),
+      axis.title.y = element_markdown(size = 16),
+      legend.text = element_markdown(size = 12),
+      axis.text.x = element_markdown(size = 14),
+      axis.title.x = element_markdown(size = 16),
     )
 }
 
@@ -1158,6 +1448,17 @@ plot_amr_map <- function(shapefile, amr_data, year, palette, title = NULL, estim
                              "")
   )
   
+  subtitle_text <- if (subtitle == TRUE) {
+    if (grepl("spp\\.", pathogen_label)) {
+      genus <- sub(" spp\\..*", "", pathogen_label)
+      bquote(italic(.(genus)) ~ "  spp." ~ "-" ~ .(antibiotic_label))
+    } else {
+      bquote(italic(.(pathogen_label)) ~ "-" ~ .(antibiotic_label))
+    }
+  } else {
+    NULL
+  }
+  
   # Create the base plot
   p <- ggplot()
   
@@ -1194,15 +1495,13 @@ plot_amr_map <- function(shapefile, amr_data, year, palette, title = NULL, estim
     theme_void() +
     labs(
       title = maintitle,
-      # Use `expression()` to italicize pathogen_name
-      subtitle = ifelse(subtitle==TRUE, bquote(italic(.(pathogen_label)) ~ "-" ~ .(tolower(antibiotic_label))), ""),
+      subtitle = subtitle_text,
       fill = ""
     ) + 
     theme(
       plot.title = element_text(hjust = 0.5, size = 35, margin = margin(b = 30)),  # Adjust title spacing
       plot.subtitle = element_text(hjust = 0.5, size = 20),  # Center the subtitle
-      #legend.position = ifelse(show_fill, "bottom","none"),                          # Place legend at bottom
-      legend.position = "none",
+      legend.position = ifelse(show_fill, "bottom","none"),                          # Place legend at bottom
       legend.title = element_text(size = 10,vjust=1),              # Adjust legend title size
       legend.text = element_text(size = 12),                # Adjust legend text size
       legend.spacing.y = unit(10, "pt") 
@@ -1765,7 +2064,7 @@ n_divergent <- function(x) {
 
 # Figure 4.1
 
-plot_pathogen_antibiotic <- function(df, pathogens, specimen, custom_labels, custom_title = "", palette = NULL) {
+plot_pathogen_antibiotic <- function(df, pathogens, specimen, year, custom_labels, custom_title = "", palette = NULL) {
   
   # Filter the data for the specified pathogens
   filtered_df <- df %>% filter(PathogenName %in% pathogens, Specimen==specimen)
@@ -1774,11 +2073,11 @@ plot_pathogen_antibiotic <- function(df, pathogens, specimen, custom_labels, cus
   dummy_rows <- filtered_df %>%
     group_by(PathogenName, Region) %>%
     mutate(AntibioticName = " ",  # Blank AntibioticName
-           Year = 2022,           # Default Year
+           Year = year,           # Default Year
            drug_bug = "",         # Blank drug_bug
            Specimen = "",         # Blank Specimen
            Grouping = "",         # Blank Grouping
-           median = NA,           # NA for median
+           regional_weighted_mean = NA,           # NA for median
            Q2.5 = NA,             # NA for Q2.5
            Q97.5 = NA)            # NA for Q97.5
   
@@ -1797,11 +2096,20 @@ plot_pathogen_antibiotic <- function(df, pathogens, specimen, custom_labels, cus
   
   # Dynamically modify AntibioticName based on pathogen list and custom labels
   df2 <- combined_df %>%
-    mutate(AntibioticName = factor(AntibioticName)) %>%  # Convert to factor if not already
-    mutate(AntibioticName2 = map2_chr(AntibioticName, PathogenName, ~ if (.x == " " & .y %in% pathogens) {
-      paste0(glue("<b><i>{custom_labels[which(pathogens == .y)]}</i></b>"),"                  ")
-    } else {
-      as.character(.x)
+    mutate(AntibioticName = factor(AntibioticName)) %>%
+    mutate(AntibioticName2 = map2_chr(AntibioticName, PathogenName, ~ {
+      if (.x == " " & .y %in% pathogens) {
+        label <- custom_labels[which(pathogens == .y)]
+        # If the label ends with "spp.", separate it from the italics
+        if (grepl("spp\\.", label)) {
+          label_parts <- strsplit(label, "spp\\.")[[1]]
+          paste0("<b><i>", label_parts[1], "</i></b> spp.")
+        } else {
+          paste0("<b><i>", label, "</i></b>")
+        }
+      } else {
+        as.character(.x)
+      }
     }))
   
   
@@ -1826,9 +2134,9 @@ plot_pathogen_antibiotic <- function(df, pathogens, specimen, custom_labels, cus
   )
   
   # Plot
-  p <- ggplot(df3, aes(x = fct_rev(AntibioticName2), y = median * 100, fill = Region,alpha = n_cutoff)) +
+  p <- ggplot(df3, aes(x = fct_rev(AntibioticName2), y = regional_weighted_mean, fill = Region,alpha = n_cutoff)) +
     geom_bar(stat = "identity", position = "dodge", width = 0.7) +  
-    geom_errorbar(aes(ymin = Q2.5 * 100, ymax = Q97.5 * 100), width = 0.2, position = position_dodge(0.7)) +  
+    geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0.2, position = position_dodge(0.7)) +  
     facet_grid(PathogenName + Grouping ~ Region, scales = "free_y", switch = "y", space = "free",
                labeller = custom_labeller) +  
     coord_flip() +
@@ -1855,7 +2163,7 @@ plot_pathogen_antibiotic <- function(df, pathogens, specimen, custom_labels, cus
     ) +
     labs(
       x = "",
-      y = "Percentage resistant (%)",
+      y = "Percentage (%)",
       title = custom_title
     ) +
     guides(alpha = "none")
@@ -1915,3 +2223,106 @@ CTA_w_prev_plot <- function(w_pred, drug_bug, obdata) {
     ) +
     guides(size = FALSE, color = FALSE)
 }
+
+# EXCECUTIVE SUMMARY
+#----------------------------------------------------------------------------
+plot_amr_by_region_ex <- function(data, region_name, 
+                               specimen_colors, 
+                               aware_colors, 
+                               base_pathogen_colors,
+                               pathogen_labels = names(base_pathogen_colors)) {
+  
+  # Filter and prepare data
+  plot_data <- data %>%
+    filter(WHORegionName == region_name) %>%
+    mutate(
+      Specimen = factor(Specimen, levels = c("BLOOD", "STOOL", "URINE", "UROGENITAL")),
+      PathogenFormatted = ifelse(
+        grepl("spp\\.", PathogenName2),
+        paste0("*", gsub(" spp\\..*", "", PathogenName2), "* spp."),
+        paste0("*", PathogenName2, "*")
+      ),
+      drug_bug_full = paste0(PathogenFormatted, " - ", AntibioticName),
+      drug_bug_combined = paste0(Specimen, "@", PathogenFormatted, " - ", AntibioticName)
+    ) %>%
+    arrange(Specimen, regional_weighted_mean) %>%
+    group_by(Specimen) %>%
+    mutate(
+      Specimen = factor(Specimen, levels = c("BLOOD", "STOOL", "URINE", "UROGENITAL")),
+      Aware_Class = factor(Aware_Class, levels = c("ACCESS", "WATCH", "RESERVE")),
+      # Create y-axis factor with correct order per facet
+      drug_bug_combined_facet = factor(drug_bug_combined, levels = unique(drug_bug_combined)),
+      # Clean label to display (remove Specimen prefix)
+      drug_bug_combined_label_facet = sub(".*@", "", as.character(drug_bug_combined))
+    )
+  
+  # Create plot
+  p <- ggplot(plot_data, aes(x = regional_weighted_mean, y = drug_bug_combined_facet)) +
+    # Specimen tile
+    geom_tile(aes(x = -15, fill = Specimen), width = 7, height = 1, alpha = 0.5) +
+    
+    scale_fill_manual(
+      values = specimen_colors,
+      name = "Infection type",
+      labels = c("BLOOD" = "Bloodstream", "STOOL" = "Gastrointestinal",
+                 "URINE" = "Urinary tract", "UROGENITAL" = "Urogenital")
+    ) +
+    
+    ggnewscale::new_scale_fill() +
+    
+   # Pathogen tile
+    geom_tile(aes(x = -6, fill = PathogenName2), width = 8, height = 1, alpha = 0.5) +
+    
+    scale_fill_manual(
+      values = base_pathogen_colors,
+      labels = pathogen_labels,
+      name = "Pathogen"
+    ) +
+    
+    ggnewscale::new_scale_fill() +
+    
+    # Aware bars
+    geom_col(aes(fill = Aware_Class), width = 0.8, alpha = 0.8) +
+    geom_errorbar(
+      aes(xmin = Q2.5, xmax = Q97.5),
+      width = 0
+    ) +
+    scale_fill_manual(
+      values = aware_colors,
+      labels = c("ACCESS" = "Access", "WATCH" = "Watch", "RESERVE" = "Reserve"),
+      name = "AWaRe class",
+      na.translate = FALSE
+    ) +
+    # Custom labels per facet
+    scale_y_discrete(labels = function(x) {
+      label_map <- setNames(plot_data$drug_bug_combined_label_facet, plot_data$drug_bug_combined_facet)
+      label_map[x]
+    }) +
+    scale_x_continuous(limits = c(-20, 100), breaks = seq(0, 100, 10)) +
+    labs(
+      title = region_name,
+      x = "Resistance (%)", y = "", fill = "", shape = "Pathogen"
+    ) +
+    facet_grid(Specimen ~ ., scales = "free_y", space = "free_y") +
+    
+    theme_minimal(base_size = 14) +
+    theme(
+      plot.title = element_text(face = "bold", size = 20, hjust = 0.5),
+      axis.text.y = element_markdown(size = 12),
+      axis.text.x = element_markdown(size = 18),
+      axis.title.x = element_markdown(size = 18),
+      legend.text = element_markdown(size = 15),
+      legend.title = element_text(face = "bold", size = 15),
+      legend.position = c(0.99, 0.08),
+      legend.justification = c(1, 0),
+      panel.grid.major = element_line(linetype = "dotted"),
+      panel.grid.minor = element_line(linetype = "dotted"),
+      strip.text = element_blank(),
+      strip.placement = "outside",
+      panel.spacing = unit(0, "lines"),
+      plot.background = element_rect(fill = "white", colour = "white")
+    )
+  
+  return(p)
+}
+
