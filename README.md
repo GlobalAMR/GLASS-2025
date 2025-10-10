@@ -1,13 +1,14 @@
-# GLASS-report
+<UNDER DEVELOPMENT STILL, DON'T FORK YET! >
+# GLASS-report 
 This repository provides Rcode for the figures featuring in the GLASS 2024 report
 
-## 2024 GLASS report - Objectives 
+## 2025 GLASS report - Objectives 
 1) Present progress in participation of countries in the Global Antimicrobial Resistance and Use Surveillance System (GLASS) and the progress in global AMR surveillance coverage at national, regional and global levels. This will help contextualize AMR findings and interpretation, to inform strategic and concrete actions for the next phase of GLASS. 
 
 2) Summarize global AMR data from 2016 –to 2022, with emphasis on the latest calendar year of data (that is, 2022)1 
 
 
-## 2024 GLASS report - Audience 
+## 2025 GLASS report - Audience 
 The 2024 GLASS Report is intended for a broad audience, including: 
 
 1) National Ministries of Health: to inform and guide national health policies and strategies. 
@@ -16,8 +17,8 @@ The 2024 GLASS Report is intended for a broad audience, including:
 4) Academia: to offer data for research and education on antimicrobial resistance. 
 5) General public: to raise awareness and understanding of AMR and its global implications 
 
-## 2024 GLASS report - Outline
-Annex 1 – Mapping of figures and tables to provisional GLASS 2024 report table of contents<br/> 
+## 2025 GLASS report - Outline
+Annex 1 – Mapping of figures and tables to provisional GLASS 2025 report table of contents<br/> 
 
 Foreword<br/>
 Acknowledgements<br/>	 
