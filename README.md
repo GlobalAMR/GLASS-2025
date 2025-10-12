@@ -1,20 +1,9 @@
-# GLASS-report <UNDER DEVELOPMENT STILL, DON'T FORK YET!>
-This repository provides Rcode for the figures featuring in the GLASS 2024 report
+# GLASS 2025 Report — Analytical Code
+This repository will host the R and Stan code developed for the analytical work underpinning the GLASS 2025 report.
+The materials are currently being prepared and will be made available in the coming days.
 
-## 2025 GLASS report - Objectives 
-1) Present progress in participation of countries in the Global Antimicrobial Resistance and Use Surveillance System (GLASS) and the progress in global AMR surveillance coverage at national, regional and global levels. 
-
-2) Summarize global AMR data from 2016 to 2023 
-
-
-## 2025 GLASS report - Audience 
-The 2025 GLASS Report is intended for a broad audience, including: 
-
-1) National Ministries of Health: to inform and guide national health policies and strategies. 
-2) Public health agencies and practitioners: to provide data and insights necessary for effective public health interventions. 
-3) Policy makers: to support the development of informed policies and regulations. 
-4) Academia: to offer data for research and education on antimicrobial resistance. 
-5) General public: to raise awareness and understanding of AMR and its global implications 
+## 2025 GLASS report - Summary 
+The Global Antimicrobial Resistance and Use Surveillance System (GLASS) 2025 report provides standardized, model-based estimates of antimicrobial resistance across countries and regions. Drawing on over 23 million infections reported by 104 countries, the report estimates resistance to 22 antibiotics in eight priority bacterial pathogens across four major infection types. By adjusting for population structure and surveillance coverage, these analyses offer a robust global picture of AMR trends. The report also introduces a framework to assess the maturity and completeness of national surveillance systems, supporting global efforts to strengthen AMR monitoring and response.
 
 ## 2025 GLASS report - Outline
 # Global Antibiotic Resistance Surveillance Report 2025
