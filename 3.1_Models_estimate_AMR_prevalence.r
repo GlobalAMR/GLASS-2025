@@ -140,26 +140,6 @@ model1c_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 + Year_c + A
 model2c_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 + Year_c + AgeCat10 | Iso3) + Year_c + AgeCat10 + Sex + poly(st_BCI_million_imp, 2))
 model3c_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 + Year_c + AgeCat10 | Iso3) + Year_c + AgeCat10 + Sex + AgeCat10*Sex + poly(st_BCI_million_imp, 2))
 
-# Set 3
-# model0_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3) + (Year | WHORegionCode) + Year + poly(st_BCI_million_imp, 2))  
-# model1_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3) + (Year + AgeCat10 || WHORegionCode) + Year + AgeCat10 + poly(st_BCI_million_imp, 2))
-# model2_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3) + (Year + AgeCat10 || WHORegionCode) + Year + AgeCat10 + Sex + poly(st_BCI_million_imp, 2))
-# model3_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3) + (Year + AgeCat10 || WHORegionCode) + Year + AgeCat10 + Sex + AgeCat10*Sex + poly(st_BCI_million_imp, 2))
-
-#model3_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3) + Year + AgeCat10 + Sex + AgeCat10*Sex + poly(st_BCI_million_imp, 2))
-#model4_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 + Year || Iso3) + Year + AgeCat10 + Sex + poly(st_BCI_million_imp, 2)) # The || assumes no correlation between the random effects
-#model5_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3) + s(Year, bs = "cr", k=5) + AgeCat10 + Sex + I(st_BCI_million_imp^2) + st_BCI_million_imp)
-#model6_formula <- bf(Resistant | trials(InterpretableAST) ~ 1 + (1 | Iso3) + Year * WHORegionCode + AgeCat10 + Sex + I(st_BCI_million_imp^2) + st_BCI_million_imp)
-
-
-#get_prior(formula=model0_formula, data=adataAS,  family=binomial)
-#get_prior(formula=model1_formula, data=adataAS,  family=binomial)
-#get_prior(formula=model2_formula, data=adataAS,  family=binomial)
-#get_prior(formula=model3_formula, data=adataAS,  family=binomial)
-#get_prior(formula=model4_formula, data=adataAS,  family=binomial)
-#get_prior(formula=model5_formula, data=adataAS,  family=binomial)
-#get_prior(formula=model6_formula, data=adataAS,  family=binomial)
-
 # Define weakly informative priors
 weak_priors <- c(
   prior(normal(0, 2), class = "Intercept"),
