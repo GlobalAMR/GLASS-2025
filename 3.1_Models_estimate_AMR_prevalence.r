@@ -246,14 +246,4 @@ fit = fit_and_save_model(drug_bug,
                          prior_default="no",
                          prior_cor = "no")
 
-#saveRDS(fit, file = paste0("./model-output/all_", priorchoice,"/models_combined/", spec_db, ".rds"))
-
-#plot(model_futures$`BLOOD-Acinetobacter spp.-Imipenem`$model3$result$value$results$model)
-
-# check = fit_and_save_model(drug_bug, model0_formula, subset_data, "Model 0",
-#                            warmup = 50,
-#                            100, output_dir,
-#                            prior_default="no",prior_cor = "no")
-# 
-# plot(check)
-# summary(check)
+saveRDS(fit, file = paste0("./model-output/all_", priorchoice,"/models_combined/", spec_db, ".rds"))
