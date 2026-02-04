@@ -314,16 +314,6 @@ summary(f2b) # Overdispersion for UROGENITAL = 1.8; STOOL = 2.55; URINE = 2.19; 
 # SPECIFY MODEL
 #----------------------------------------------------------------------------------
 
-# Define model formulas 
-#model1_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year (1 + Year | Iso3)) 
-#model2_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year + (1 + Year | Iso3) + (1 | WHORegionCode)) 
-#model3_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year + (1 | Iso3) + (Year | WHORegionCode))
-#model4_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year + (1 | Iso3) + Year * WHORegionCode)
-
-#get_prior(formula=model1a_formula, data=adataAC,  family=negbinomial())
-#get_prior(formula=model2a_formula, data=adataAC,  family=negbinomial())
-#get_prior(formula=model3a_formula, data=adataAC,  family=negbinomial())
-
 # Fit with year centered to improve model convergence
 model1a_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year_c + (1 + Year_c | Iso3)) 
 model2a_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year_c + (1 + Year_c | Iso3) + (1 | WHORegionCode)) 
