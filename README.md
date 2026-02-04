@@ -1,4 +1,4 @@
-# GLASS 2025 Report — Analytical Code
+# GLASS 2025 Report - Analytical Code
 This repository will host the R and Stan code developed for the analytical work underpinning the GLASS 2025 report.
 The materials are currently being prepared and will be made available in the coming days.
 
