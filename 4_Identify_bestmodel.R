@@ -1,0 +1,199 @@
+################################################################
+# GLASS REPORT - Identify best fitting model for AMR prevalence
+################################################################
+
+# Author: Esther van Kleef
+# Date last updated: 2 MAY 2025
+
+rm(list=ls())
+
+# Load R packages
+pacman::p_load(readxl, writexl, brms, loo, wesanderson, ggplot2, rstan, purrr, here,
+               tidyr, data.table, bayesplot, patchwork, stringr, tidybayes,scales, ggh4x, ggtext)
+
+
+# Locate directories
+dirDataRaw   <- here("Data", "raw")
+dirDataClean <- here("Data", "cleaned")
+dirOutput    <- here("Output")
+
+# Load in functions
+source(here("Scripts", "functions", "GLASS_functions.R"))
+source(here("Scripts", "functions", "multiplot.R"))
+
+##############################################################
+# LOAD IN DATA
+##############################################################
+
+# Population data
+pdata = read.csv(paste0(dirDataRaw, "/EI_Popdta_110325_EV.csv"), sep=",")       # Population data
+pdataDM = read.csv(paste0(dirDataClean, "/EI_PopdtaDM_140325_EV.csv"), sep=",")       # Population data
+
+# Country data
+cdata = read.csv(paste0(dirDataClean, "/EI_Countrydta_AST_140325_EV.csv"), sep=",")   # Country data
+
+# AMR data
+adataAC_crude = read.csv(paste0(dirDataRaw, "/EI_AMRdtaAC_110325_EV.csv"), sep=",")   # Country AMR data; use CRUDE data as wrangled by OLGA, where E.coli and MRSA are not manually changed
+
+# AMR data
+adataAC = read.csv(paste0(dirDataClean, "/EI_AMRdtaAC_Pop_country_HAQI_140325_EV.csv"), sep=",")   # Country AMR data
+adataAS = read.csv(paste0(dirDataClean, "/final_linked_data/EI_AMRdtaINT_ANALYSES.csv"), sep=",")   # Country AMR data
+
+# List of drug bug combinations
+dbdata = read.csv(paste0(dirDataClean, "/updated_summary_dbc_longformat.csv"))
+
+# Drug bug combinations to include in report
+combinations2022 = dbdata %>% 
+  mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName))
+
+###################################################################
+# DATA WRANGLING
+###################################################################
+
+adataAS = adataAS %>%
+  mutate(AgeCat10 = relevel(factor(AgeCat10), ref="05<14")
+  )
+
+# Adding cut off to the data, so to predict prevalences for higher testing rate
+cutoff = read.csv(paste0(dirDataClean, "/final_linked_data/estimated_testing_cutoff.csv"), sep=",")       # Population data
+cutoff$combined2 = paste0(cutoff$Specimen,"-",cutoff$PathogenName, "-", cutoff$Grouping)
+
+d = cutoff %>%filter(!combined2 %in% c("BLOOD-Escherichia coli-Carbapenems","BLOOD-Klebsiella pneumoniae-Carbapenems",
+                                       "URINE-Escherichia coli-Fluoroquinolones","URINE-Klebsiella pneumoniae-Fluoroquinolones")) %>%
+  ungroup()%>%
+  group_by(Specimen, PathogenName) %>%
+  distinct()
+
+adataAS = left_join(adataAS, d, by=c("Specimen", "PathogenName"))
+
+
+###################################################################
+# COLOUR SPECIFICATION
+###################################################################
+
+palette <- wes_palette("Darjeeling1", n = 5)
+palette2 <- wes_palette("BottleRocket2", n = 1)
+palette3 <- wes_palette("GrandBudapest1", n = 2)[2]
+palette4 <- wes_palette("BottleRocket2", n = 2)[2]
+palette5 = c(palette3, palette[2],palette2,palette[5], palette[4],palette4)
+
+palette_map = c(palette2, palette[2],palette3)
+
+# Define colors for each WHORegionCode
+facet_colors <- c(
+  "AFR" = palette5[1],
+  "AMR" = palette5[2],
+  "EMR" = palette5[3],
+  "EUR" = palette5[4],
+  "SEA" = palette5[5],
+  "WPR" = palette5[6]
+)
+
+
+###################################################################################
+# LOAD IN MODEL OUTPUTS
+###################################################################################
+
+#----------------------------------------------------------------------------
+# GET BEST MODELS PER DRUG BUG
+#----------------------------------------------------------------------------
+get_best_model <- function(results) {
+  
+  # Remove models with divergences
+  #d <- results %>% filter(divergent == 0)
+  d <- results # !! STILL DEFINE HOW TO CHECK FOR DIVERGENCES, HERE OR IN PREVIOUS STEP 
+  # Group by drug_bug and calculate numeric values and differences
+  d2 <- d %>%
+    group_by(drug_bug) %>%
+    mutate(
+      # Assign numeric values to models
+      num_model = case_when(
+        model == "model0" ~ 0,
+        model == "model1" ~ 1,
+        model == "model2" ~ 2,
+        model == "model3" ~ 3,
+        TRUE ~ NA_real_
+      ),
+      
+      # Find num_model where elpd_diff == 0 for each drug_bug group (or smallest)
+      num_model_elpd_zero = first(num_model[elpd_diff == 0], default = NA_real_),
+      
+      # Calculate the difference for each row
+      diff_num_model = num_model - num_model_elpd_zero
+    ) %>%
+    ungroup() %>%
+    mutate(
+      # Identify the best model based on looic_significant and diff_num_model
+      best_model = ifelse(looic_significant == FALSE & diff_num_model < 0, 1, 0)
+    )
+  
+  # Filter for the best model based on elpd_diff == 0 and best_model == 1
+  model_best_wp <- d2 %>% filter(elpd_diff == 0)
+  model_best_simple <- d2 %>% filter(best_model == 1)
+  
+  # Find simpler models
+  db_simpler_model <- model_best_simple %>% filter(!duplicated(drug_bug))
+  
+  # Replace rows in bsi_model_best_wp with simpler models where applicable
+  model_best_wp[which(model_best_wp$drug_bug %in% db_simpler_model$drug_bug), ] <- db_simpler_model
+  
+  # Return the final simplified model set
+  return(model_best_wp)
+}
+
+# BSI
+#model_fit_bsi = readRDS(paste0(dirOutput,"Model_output/AMR_prevalence/weakip/Model_comparison/model_fits_bsi_wp.rds"))
+results_bsi = read.csv(paste0(dirOutput,"Model_output/AMR_prevalence/weakip/Model_comparison/compare_results_bsi_wp.csv"))
+
+# UTI
+#model_fit_uti = readRDS(paste0(dirOutput,"Model_output/AMR_prevalence/weakip/Model_comparison/model_fits_uti_wp.rds"))
+results_uti = read.csv(paste0(dirOutput,"Model_output/AMR_prevalence/weakip/Model_comparison/compare_results_uti_wp.csv"))
+
+# STOOL
+#model_fit_stool = readRDS(paste0(dirOutput,"Model_output/AMR_prevalence/weakip/Model_comparison/model_fits_stool_wp.rds"))
+results_stool = read.csv(paste0(dirOutput,"Model_output/AMR_prevalence/weakip/Model_comparison/compare_results_stool_wp.csv"))
+
+# GONORRHOEA
+#model_fit_uro = readRDS(paste0(dirOutput,"Model_output/AMR_prevalence/weakip/Model_comparison/model_fits_uro_wp.rds"))
+results_uro = read.csv(paste0(dirOutput,"Model_output/AMR_prevalence/weakip/Model_comparison/compare_results_uro_wp.csv"))
+
+# Find the best model per drug bug
+bsi_model_best_wp <- get_best_model(results_bsi)
+uti_model_best_wp <- get_best_model(results_uti)
+stool_model_best_wp <- get_best_model(results_stool)
+uro_model_best_wp <- get_best_model(results_uro)
+
+# STORE BEST FITTING MODELS FOR HEATMAP
+#----------------------------------------------------------------------------
+# Using LOOIC_significant as cut-off for simplere model or not. 
+# When using elpd_diff_significant, more often simpler models are better fit
+bsi_model_best_wp$Specimen = "BLOOD"
+uti_model_best_wp$Specimen = "URINE"
+stool_model_best_wp$Specimen = "STOOL"
+uro_model_best_wp$Specimen = "UROGENITAL"
+
+model_best_wp <- rbind(bsi_model_best_wp, uti_model_best_wp, stool_model_best_wp, uro_model_best_wp)
+model_best_wp$combined = paste0(model_best_wp$Specimen,"-", model_best_wp$drug_bug)
+
+write.csv(model_best_wp,file.path(dirOutput, "/Model_output/AMR_prevalence/Model_comparison/best_model_fit_all.csv"))
+#model_best_wp = read.csv(file.path(dirOutput, "/Model_output/AMR_prevalence/Model_comparison/best_model_fit_all.csv"))
+
+# MAKE EXPLORATORY PLOT
+
+# Create the heatmap
+p = ggplot(model_best_wp, aes(x = model, y = combined)) +
+  geom_tile(aes(fill = model), color = "white") +
+  scale_fill_viridis_d() +  # You can adjust color scale as needed
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(
+      fill = "white",
+      colour = "white"))+
+  labs(title = "Heatmap of Drug-Bug Combinations by Model Type",
+       x = "Model Type",
+       y = "Drug-Bug Combination") +
+  theme(axis.text.x = element_text(angle = 0, hjust = 1))
+p
+
+ggsave(filename = paste0(dirOutput, "/Descriptives/Model_comparison_plots/Heatmap_bestmodel_AMRprevalence_all.svg"), plot = p, 
+       width = 10, height = 20)

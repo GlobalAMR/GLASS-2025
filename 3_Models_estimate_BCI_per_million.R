@@ -1,13 +1,38 @@
 ######################################################
-# BCI over time
+# GLASS REPORT - BCI over time
 ######################################################
 
 # Author: Esther van Kleef
+# Date created: 21 August 2024
 # Date last updated: 22 April 2025
 
-#######################################
-# GLASS REPORT - FIGURES
-#######################################
+# Purpose
+# This script estimates blood culture incidence (BCI) trends over time for
+# multiple specimen groups using hierarchical negative binomial models.
+#
+# It:
+# - fits Bayesian multilevel models with country-level random slopes,
+# - compares candidate models using LOO,
+# - extracts country-, regional-, and global-level trend estimates,
+# - generates posterior predictions for 2016–2023,
+# - and saves publication-ready figures and summary tables.
+
+# Key features of models:
+# - Offset: log(TotalPopulation)
+# - Random effects: country-level intercepts and year slopes, compared with adding region effects
+# - Family: negative binomial to handle overdispersion
+# - Year is centered to improve convergence and interpretation
+#
+# Main outputs:
+# - Trend figures saved to Output/Descriptives and Output/Chapter_*/Ch*_Figures
+# - Model objects saved as RDS files
+# - Summary tables written to Excel workbooks
+#
+# Notes:
+# - The script runs separately for BLOOD, URINE, STOOL, and UROGENITAL.
+# - Posterior summaries are converted to annual percentage change for reporting.
+# - The code includes both crude and model-based trend visualizations.
+
 rm(list=ls())
 
 # Load R packages
@@ -15,42 +40,40 @@ pacman::p_load(ggplot2, dplyr, tidyr, brms, data.table, bayesplot,wesanderson, g
                openxlsx)
 
 # Locate directories
-dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
-dirDataNewO = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2025 GLASS REPORT/GLASS_final_curated"
-dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2025 GLASS REPORT/GLASS_final_curated/GLASS_final_curated_linked"
-dirDataRaw = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2025 GLASS REPORT/"
-
-dirOutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2025 ANALYSIS EV/2025 Figures_Tables"
-#dirOutputCheck = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 Figures_Tables/2021/"
-dirOutputModel = "C:/Users/esthe/OneDrive - VanKleefBV/Documenten/Documenten/WHO/WHO_GLASS/2025 ANALYSIS EV/2025 Model_output/model_output_surveillance_coverage/"
-
-dirOutputReport = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2025 REPORT WRITING/FINAL 2023 FIGURES TABLES AND RESULTS"
+dirDataRaw   <- here("Data", "raw")
+dirDataClean <- here("Data", "cleaned")
+dirOutput    <- here("Output")
 
 # Load in functions
-source("./0_GLASS_functions.R")
-source("./0_multiplot.R")
+source(here("Scripts", "functions", "GLASS_functions.R"))
+source(here("Scripts", "functions", "multiplot.R"))
+
+# Latest year of analyses
+year = 2023 # change to latest year
 
 ##############################################################
 # LOAD IN DATA
 ##############################################################
 
 # Population data
-pdata = read.csv(paste0(dirDataNewO, "/EI_Popdta_110325_EV.csv"), sep=",")       # Population data
-pdataDM = read.csv(paste0(dirDataNew, "/EI_PopdtaDM_140325_EV.csv"), sep=",")       # Population data
+pdata = read.csv(paste0(dirDataRaw, "/EI_Popdta_110325_EV.csv"), sep=",")       # Population data
+pdataDM = read.csv(paste0(dirDataClean, "/EI_PopdtaDM_140325_EV.csv"), sep=",")       # Population data
 
 # Country data
-cdata = read.csv(paste0(dirDataNew, "/EI_Countrydta_AST_140325_EV.csv"), sep=",")   # Country data
+cdata = read.csv(paste0(dirDataClean, "/EI_Countrydta_AST_140325_EV.csv"), sep=",")   # Country data
 
 # AMR data
-adataAC_crude = read.csv(paste0(dirDataNewO, "/EI_AMRdtaAC_110325_EV.csv"), sep=",")   # Country AMR data
+adataAC_crude = read.csv(paste0(dirDataRaw, "/EI_AMRdtaAC_110325_EV.csv"), sep=",")   # Country AMR data; use CRUDE data as wrangled by OLGA, where E.coli and MRSA are not manually changed
 
-adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_ANALYSES.csv"), sep=",")   # Country AMR data
-adataAS = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_ANALYSES.csv"), sep=",")   # Country AMR data
-
-idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_Country_140325_EV.csv"), sep=",")                   # Implementation data
+# AMR data
+adataAC = read.csv(paste0(dirDataClean, "/EI_AMRdtaAC_Pop_country_HAQI_140325_EV.csv"), sep=",")   # Country AMR data
+adataAS = read.csv(paste0(dirDataClean, "/final_linked_data/EI_AMRdtaINT_ANALYSES.csv"), sep=",")   # Country AMR data
 
 # List of drug bug combinations
-dbdata = read.csv(paste0(dirDataNew, "./updated_summary_dbc_longformat.csv"), sep=",")
+dbdata = read.csv(paste0(dirDataClean, "/updated_summary_dbc_longformat.csv"))
+
+# Surveillance indicator data
+idata = read.csv(paste0(dirDataClean,"/final_linked_data/EI_Implementationdta_Country_140325_EV.csv"), sep=",")                   # Implementation data
 
 # Drug bug combinations to include in report
 combinations2022 = dbdata %>% 
@@ -142,16 +165,16 @@ ms1_global =m3 %>%
 ms2 = 
    rbind(ms1, ms1_global)
  
-#write.csv(ms2, file = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Figure_3.4_BCI_million_specimen_overtime_crude_data.csv"))
-wb <- createWorkbook()
-addWorksheet(wb, "Crude_summaries_spec")
+#write.csv(ms2, file = paste0(dirOutput, "/Chapter_3/Ch3_summary_stats/Figure_2.4_BCI_million_specimen_overtime_crude_data.csv"))
+#wb <- createWorkbook()
+#addWorksheet(wb, "Crude_summaries_spec")
 
 # Write data to each sheet
-writeData(wb, sheet = "Crude_summaries_spec", x = ms2)
+#writeData(wb, sheet = "Crude_summaries_spec", x = ms2)
 
-saveWorkbook(wb, file = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Figure_3.4_BCI_perMillion_crude_and_trends.xlsx"), overwrite = TRUE)
+#saveWorkbook(wb, file = paste0(dirOutput, "/Chapter_2/Ch2_summary_stats/Figure_2.3_BCI_million_crude_and_trends.xlsx"), overwrite = TRUE)
 
- region_labels <- c(
+region_labels <- c(
    "African Region" = "African\nRegion",
    "Region of the Americas" = "Region of the \nAmericas",
    "South-East Asia Region" = "South-East\nAsia Region",
@@ -161,7 +184,7 @@ saveWorkbook(wb, file = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Fi
    # "Global" = "Global"
  )
  
- custom_labeller <- labeller(
+custom_labeller <- labeller(
    WHORegionName = as_labeller(region_labels),
  )
 
@@ -187,19 +210,15 @@ global <- ggplot(data = m3, aes(x = Year, y = BCI_permillion, color = Specimen, 
     colour = "white"),
     title = element_text(size = 20),
     axis.text.x = element_text(size = 14),
-    #axis.text.y = element_text(size = 18),  
     axis.text.y = ggtext::element_markdown(size = 18),
     strip.text.y.left = element_text(size = 18, angle = 0, vjust = 1.01, hjust = 1),  
     strip.text = element_text(size = 20),   
-    #strip.text = element_blank(),   
-    #strip.text.y = element_blank(),   
     strip.placement = "outside",            
     strip.background = element_blank(),      
     panel.grid.major = element_line(linetype = "dotted"),  # Dotted major grid lines
     panel.grid.minor = element_line(linetype = "dotted"),
     legend.position = "bottom",
     legend.text = element_text(size = 14)) #+ 
-# guides(fill = guide_legend(nrow = 2), size=FALSE) 
 global
 
 # By region
@@ -225,22 +244,22 @@ pcf4 = plot_bci_spec_trend_cta_fitted(m3, specimen = "UROGENITAL")
 combined_plot2 = pc1+pc2+pc3+pc4 + plot_layout(1)
 combined_plot3 = pcf1+pcf2+pcf3+pcf4 + plot_layout(1)
 
-ggsave(filename =  paste0(dirOutput, "/Analyses/Section3.3_Surveillance_coverage/Trends/Fig_3.4_bci_overtime_regional_crudedata.png"), 
+ggsave(filename =  paste0(dirOutput, "/Descriptives/BCI_overtime_regional_crudedata.png"), 
        plot = combined_plot, 
        device="png",
        width = 18, height = 15)
 
-ggsave(filename = paste0(dirOutput, "/Analyses/Section3.3_Surveillance_coverage/Trends/Fig_3.4_bci_overtime_cta_crudedata.png"), 
+ggsave(filename = paste0(dirOutput, "/Descriptives/BCI_overtime_cta_crudedata.png"), 
        plot = combined_plot2, 
        device="png",
        width = 18, height = 15)
 
-ggsave(filename = paste0(dirOutput, "/Analyses/Section3.3_Surveillance_coverage/Trends/Fig_3.4_bci_overtime_cta_crudedata_linearfitted.png"), 
+ggsave(filename = paste0(dirOutput, "/Descriptives/BCI_overtime_cta_crudedata_linearfitted.png"), 
        plot = combined_plot3, 
        device="png",
        width = 18, height = 15)
 
-ggsave(filename = paste0(dirOutput, "/Analyses/Section3.3_Surveillance_coverage/Trends/Fig_3.4_bci_overtime_global_crudedata.png"), 
+ggsave(filename = paste0(dirOutput, "/Descriptives/BCI_overtime_global_crudedata.png"), 
        plot = global, 
        device="png",
        width = 18, height = 7)
@@ -294,7 +313,7 @@ f4 <- glmmTMB(
 summary(f3a)
 summary(f3)
 summary(f4)
-AIC(f3a, f3,f4) # f3 gives best fit
+AIC(f3a,f3,f4) # f3 gives best fit
 
 f2b <- glmmTMB(
   SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + (1 | Iso3 ) + (1 | WHORegionCode), 
@@ -319,7 +338,6 @@ model1a_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1
 model2a_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year_c + (1 + Year_c | Iso3) + (1 | WHORegionCode)) 
 model3a_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year_c + (1 | Iso3) + (Year_c | WHORegionCode))
 model4a_formula <- bf(SpecimenIsolateswithAST ~ offset(log(TotalPopulation)) + 1 + Year_c + (1 | Iso3) + Year_c * WHORegionCode)
-
 
 
 # Define weakly informative priors
@@ -391,7 +409,6 @@ warmup = 2000
 # Initialize list to store model results
 model_results <- list()
 
-
 # Loop over each drug-bug combination
 for (specimen in unique(m3$Specimen)) {
   print(specimen)
@@ -440,19 +457,6 @@ for (specimen in unique(m3$Specimen)) {
     control = list(adapt_delta = 0.95),
     set.seed(123)
   )
-  
-  # model4 <- brm(
-  #   formula = model4_formula,
-  #   family = negbinomial(),
-  #   data = data_subset,
-  #   cores = 4,
-  #   chains = 4,
-  #   iter = iter,
-  #   warmup = warmup,
-  #   prior = weak_priors2a,
-  #   control = list(adapt_delta = 0.95),
-  #   set.seed(123)
-  # )
   # Store the models in a results list
   model_results[[specimen]] <- list(model1 = model1, model2 = model2, model3 = model3)
 }
@@ -461,8 +465,10 @@ for (specimen in unique(m3$Specimen)) {
 # Posterior predictive check
 #pp_check(model1, type = "hist")
 
-saveRDS(model_results, paste0(dirOutputModel, "weakip/Specimen/Model_fits_scoverage_specimen.rds"))
-model_results = readRDS(paste0(dirOutputModel, "weakip/Specimen/Model_fits_scoverage_specimen.rds"))
+saveRDS(model_results, paste0(dirOutput, "Model_output/weakip/Specimen/Model_fits_scoverage_specimen.rds"))
+
+# Load in results
+model_results = readRDS(paste0(dirOutput, "Model_output/weakip/Specimen/Model_fits_scoverage_specimen.rds"))
 
 # LOO COMPARE
 loo_compare(loo(model_results[["BLOOD"]]$model1), loo(model_results[["BLOOD"]]$model2),loo(model_results[["BLOOD"]]$model3))
@@ -472,7 +478,6 @@ loo_compare(loo(model_results[["UROGENITAL"]]$model1), loo(model_results[["UROGE
 
 # ABOVE SHOWS THAT A MODEL WITH RANDOM-INTERCEPT (ISO3) AND YEAR AS RANDOM-EFFECT IS BEST MODEL 
 # WITH ADDITIONAL BASELINE VARIATION FOR WHOREGION NOT IMPROVING MODEL FIT
-
 summary(model_results[["BLOOD"]]$model1); n_divergent(model_results[["BLOOD"]]$model1) # 
 summary(model_results[["URINE"]]$model1); n_divergent(model_results[["URINE"]]$model1) # 
 summary(model_results[["STOOL"]]$model1); n_divergent(model_results[["STOOL"]]$model1) # 
@@ -691,11 +696,6 @@ p = ggplot(slopes_all, aes(y = WHORegionName)) +
     x = "Weighted annual % change in reported BCI",
     y = "WHO Region"
   ) +
-  #  geom_text(aes(x = max(Q97.5_p) + 0.5, label = label_95CrI),
-  #            hjust = 0.1,
-  #            size = 4,
-  #            family = "Fira Sans", 
-  #            fontface = "plain")+
   theme_minimal(base_size = 13) +
   geom_text(
     aes(x = max(Q97.5_p) + 0.5, 
@@ -731,15 +731,15 @@ p <- p + ggh4x::facetted_pos_scales(
 )
 p
 
-# FIGURE 3.4
-ggsave(filename = paste0(dirOutputReport, "/Chapter 3/Ch3 Figures/Final/Figure_3.4_slopechange_regional.svg"), 
+# FIGURE 2.4
+ggsave(filename = paste0(dirOutput, "/Chapter_2/Ch2_figures/Figure_2.4_slopechange_regional.svg"), 
        plot = p,
        device = svg,
        dpi = 300,
        bg = "white",
        width = 11, height = 8)  
 
-ggsave(filename = paste0(dirOutputReport, "/Chapter 3/Ch3 Figures/Final/Figure_3.4_slopechange_regional.png"), 
+ggsave(filename = paste0(dirOutput, "/Chapter_2/Ch2_figures/Figure_2.4_slopechange_regional.png"), 
        plot = p,
        device = png,
        dpi = 300,
@@ -749,7 +749,6 @@ ggsave(filename = paste0(dirOutputReport, "/Chapter 3/Ch3 Figures/Final/Figure_3
 
 # For writing
 #write.csv(slopes_all, file = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Figure_3.4_slopechange_regional.csv"))
-
 slopes_all_p = slopes_all %>%
   dplyr::select(WHORegionName, n,specimen, mean_slope_p, median_slope_p, Q2.5_p, Q10_p, Q25_p, Q75_p, Q90_p, Q97.5_p, label_95CrI, Significant)
 
@@ -757,14 +756,15 @@ slopes_all_p = slopes_all_p %>%
   rename(
     nCTA_3ydata = "n"
   )
-addWorksheet(wb, "Estimated_slope_change_spec")
+
+#addWorksheet(wb, "Estimated_slope_change_spec")
 #addWorksheet(wb, "Sheet3")
 #addWorksheet(wb, "Sheet4")
 
 # Write data to each sheet
 writeData(wb, sheet = "Estimated_slope_change_spec", x = slopes_all_p)
 
-saveWorkbook(wb, file = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Figure_3.4_BCI_perMillion_crude_and_trends.xlsx"), overwrite = TRUE)
+#saveWorkbook(wb, file = paste0(dirOutput, "/Chapter_2/Ch2_summary stats/Figure_2.4_BCI_million_crude_and_trends.xlsx"), overwrite = TRUE)
 
 # ESTIMATE EXPECTED REGIONAL TRENDS
 #------------------------------------------------------------------------------------
@@ -1122,12 +1122,7 @@ p
 
 p2 = ggplot(pred %>%filter(specimen=="UTI"), aes(x = Year, y = median_weighted_prediction, color = region_labels)) +
   geom_line(size = 1) +  # Lines for median predictions
-  # geom_jitter(
-  #   data = m4_filtered %>% filter(Specimen == "URINE"),  # Add data directly to geom_jitter
-  #   aes(x = Year, y = BCI_permillion, size = BCI_permillion),  # Ensure y is mapped correctly
-  #   width = 0.2, height = 0.2, alpha = 0.5, colour="lightblue"
-  # ) +
-   scale_colour_manual(values = facet_colors3) +  # Manually set fill colors if necessary
+  scale_colour_manual(values = facet_colors3) +  # Manually set fill colors if necessary
   facet_wrap(~region_labels, ncol=7, scale= "free_y") +  # Facet by WHORegionName
   geom_ribbon(
     aes(ymin = Q2.5_weighted_prediction, ymax = Q97.5_weighted_prediction, fill =region_labels),
@@ -1356,14 +1351,14 @@ p8
 
 combined_plot2 = p5+p6+p7+p8 + plot_layout(1)
 
-ggsave(filename = paste0(dirOutputReport, "/Chapter 3/Ch3 Figures/For_writing/Figure_3.4_slopechange_regional.png"), 
+ggsave(filename = paste0(dirOutput, "/Chapter_3/Ch3_Figures/Figure_2.4_slopechange_regional.png"), 
        plot = combined_plot,
        device = png,
        dpi = 300,
        bg = "white",
        width = 15, height = 15)  
 
-# ggsave(filename = paste0(dirOutputReport, "/Chapter 3/Ch3 Figures/For_writing/Figure_3.4_slopechange_regional_withoutdata.png"), 
+# ggsave(filename = paste0(dirOutput, "/Chapter_3/Ch3_Figures/Figure_2.4_slopechange_regional_withoutdata.png"), 
 #        plot = combined_plot2,
 #        device = png,
 #        dpi = 300,
@@ -1382,5 +1377,5 @@ addWorksheet(wb, "Estimated_absolute_trends")
 writeData(wb, sheet = "Estimated_absolute_trends", x = pred_abs)
 #writeData(wb, sheet = "Estimated_diff_2016_vs_2023", x = pred_diff)
 
-saveWorkbook(wb, file = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Figure_3.4_BCI_perMillion_crude_and_trends.xlsx"), overwrite = TRUE)
+saveWorkbook(wb, file = paste0(dirOutput, "/Chapter_2/Ch2_summary_stats/Figure_2.4_BCI_million_crude_and_trends.xlsx"), overwrite = TRUE)
 

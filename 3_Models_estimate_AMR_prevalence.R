@@ -1,44 +1,95 @@
-#------------------------------------------------------------------
+##################################################################################################
 # GLASS REPORT - ESTIMATE AMR RATES 
-#------------------------------------------------------------------
+# #################################################################################################
 
 # RUN ALL MODELS FOR EACH DRUG BUG 
-#------------------------------------------------------------------
+# #################################################################################################
 
 # Author Esther van Kleef
 # Date created: 21 August 2024
-# Date last updated: 24 March 2025
+# Date last updated: 02 March 2026
+
+# Purpose
+# This script fits Bayesian hierarchical binomial (logit) models to estimate
+# antimicrobial resistance (AMR) prevalence for specified drug–bug combinations
+# (specimen, pathogen, antibiotic). 
+
+# It supports:
+# - Running multiple model specifications (model0c–model3c), 
+# - computing approximate out-of-sample
+# - fit (LOO), and saving fitted models and diagnostics for later model comparison.
+#
+# Key features of four models:
+# - Multi-level structure: 
+#   * country-level random intercepts and random slopes for Year (and optionally AgeCat10) to capture between-country heterogeneity.
+#   * Fixed effects include Year (centered), demographic covariates (AgeCat10, Sex) and a quadratic term for testing coverage (st_BCI_million_imp).
+# - Weakly informative priors are provided by default with options to include LKJ priors on random-effect correlations.
+# - Uses brms (NUTS/HMC) for Bayesian estimation and loo for model comparison.
+#
+# Inputs (local): 
+# - Data: cleaned CSV files under Data/cleaned (see dirDataClean). 
+#   * dbdata: drug–bug lookup and numbering (updated_summary_dbc_longformat.csv)
+#   * adataAS, adataAC, adataDM, adataNT: curated AMR datasets (see file names)
+
+# Typical outputs (Output/Model_output/AMR_prevalence/<prior>/<specimen>/):
+# - <drugbug>_<MODEL>_fit.rds      : saved brms fit object
+# - <drugbug>_<MODEL>_loo.rds      : loo object for model comparison
+
+# Usage notes:
+# - Run interactively: set dbnum and MODEL at top of script (examples provided).
+# - Run on cluster: supply SLURM_ARRAY_TASK_ID and MODEL via environment variables.
+# - Tuning: adjust iter, warmup, adapt_delta, and max_treedepth via control list
+#   if divergent transitions or high Rhat values (>1.05–1.1) occur.
+# - Center Year before fitting to improve random-slope / intercept identifiability.
 
 rm(list=ls())
 
 # Load R packages
-pacman::p_load(brms, future, mgcv, loo, furrr, dplyr)
+pacman::p_load(brms, future, mgcv, loo, furrr, dplyr, here)
 
 # Get array task ID and model type from SLURM environment variable
-task_id <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-MODEL <- as.character(Sys.getenv("MODEL", "model0c"))  # Default to "model0" if not set
+#---------------------------------------------------------------------------------------------------
+
+# When running code locally
+# Locate directories
+dirDataRaw   <- here("Data", "raw")
+dirDataClean <- here("Data", "cleaned")
+dirOutput    <- here("Output")
+
+# Load in functions
+source(here("Scripts", "functions", "GLASS_functions.R"))
+source(here("Scripts", "functions", "multiplot.R"))
+
+# Latest year of analyses
+year = 2023 # change to latest year
+
+# List of drug bug combinations
+dbdata = read.csv(paste0(dirDataClean, "/updated_summary_dbc_longformat.csv"))
+dbdata$combined = paste0(dbdata$Specimen, "-", dbdata$PathogenName, "-", dbdata$AntibioticName)
 
 # Drug bug numbers to run with this script
-dbnum = task_id
+unique(dbdata$combined)
+dbdata$number
+db = unique(dbdata$combined)[1] # Choose which drug bug combination to run
+db
+
+dbnum = dbdata$number[which(dbdata$combined==db)] 
+MODEL <- "model0c" # "model1c; "model2c"; model3c"; choos model to run
+
+# When running code on the cluster
+#task_id <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+#MODEL <- as.character(Sys.getenv("MODEL", "model0c"))  # Default to "model0" if not set
+
+# Drug bug numbers to run with this script
+#dbnum = task_id
 ncore = 4
 priorchoice = "weakip"
 iter = 4000
 warmup = 2000
 
-# List of drug bug combinations
-dbdata = read.csv("./data/GLASS_final_curated_linked/updated_summary_dbc_longformat.csv", sep=",")
-
-# Local
-# dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2024 GLASS REPORT/GLASS_final_curated/GLASS_final_curated_linked"
-# dbdata = read.csv(paste0(dirDataNew, "/updated_summary_dbc_longformat.csv"))
-# dirDataModeloutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2024 ANALYSIS EV/2024 R code EV/Cluster"
-
-dbdata$combined = paste0(dbdata$Specimen, "_", dbdata$PathogenName, "_", dbdata$AntibioticName)
-
-
 # Load in functions
-source("./model-code/0_GLASS_functions.R")
-source("./model-code/0_multiplot.R")
+#source("./model-code/0_GLASS_functions.R")
+#source("./model-code/0_multiplot.R")
 
 
 
@@ -46,16 +97,16 @@ source("./model-code/0_multiplot.R")
 # LOAD IN DATA
 ##############################################################
 # When running local
-
 # AMR data
-# adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_Pop_Country_HAQI_030924_EV.csv"), sep=",")   # Country AMR data
-# adataDM = read.csv(paste0(dirDataNew, "/EI_AMRdtaDM_Country_030924_EV.csv"), sep=",")   # Country AMR data
-# adataNT = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_Pop_Country_030924_EV.csv"), sep=",")   # Country AMR data
-# adataAS = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_ANALYSES.csv"), sep=",")   # Country AMR data
+adataAC = read.csv(paste0(dirDataClean, "/EI_AMRdtaAC_Pop_country_HAQI_140325_EV.csv"), sep=",")   # Country AMR data
+adataDM = read.csv(paste0(dirDataClean, "/EI_AMRdtaDM_Country_140325_EV.csv"), sep=",")   # Country AMR data
+adataNT = read.csv(paste0(dirDataClean, "/EI_AMRdtaINT_Pop_Country_140325_EV.csv"), sep=",")   # Country AMR data
+adataAS = read.csv(paste0(dirDataClean, "/final_linked_data/EI_AMRdtaINT_ANALYSES.csv"), sep=",")   # Country AMR data
 
-adataAC = read.csv("./data/GLASS_final_curated_linked/EI_AMRdtaAC_ANALYSES.csv", sep=",")   # Country AMR data
+# On cluster
+#adataAC = read.csv("./data/GLASS_final_curated_linked/EI_AMRdtaAC_ANALYSES.csv", sep=",")   # Country AMR data
 #adataDM = read.csv("./data/GLASS_final_curated_linked/EI_AMRdtaDM_Country_030924_EV.csv", sep=",")   # Country AMR data
-adataAS = read.csv("./data/GLASS_final_curated_linked/EI_AMRdtaINT_ANALYSES.csv", sep=",")   # Country AMR data
+#adataAS = read.csv("./data/GLASS_final_curated_linked/EI_AMRdtaINT_ANALYSES.csv", sep=",")   # Country AMR data
 
 #adataNT = read.csv("./data/GLASS_final_curated_linked/EI_AMRdtaINT_Pop_Country_030924_EV.csv", sep=",")   # Country AMR data
 
@@ -68,18 +119,14 @@ adataAS = adataAS %>%
 combinations2022 = dbdata %>% 
   mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName))
 
-#specimen = unique(combinations2022 %>% filter(number %in% dbnum) %>% select(Specimen))
-#spec_db = paste0(specimen, "-", min(dbnum), "-", max(dbnum))
 spec_db = combinations2022 %>% filter(number %in% dbnum) %>% select(combined) 
+spec_db
 
 ###################################################################
 # DEFINE DRUG BUG COMBINATIONS TO RUN
 ###################################################################
-
 drug_bug = combinations2022 %>% filter(number %in% dbnum) %>% select(combined) 
 drug_bug = unique(drug_bug$combined)
-#print(drugbugrun)
-
 
 ###################################################################
 # PREAMBLE
@@ -214,14 +261,13 @@ subset_data <- adataAS %>% filter(combined == drug_bug) %>%
 
 subset_data$Year_c = as.numeric(scale(subset_data$Year, center=TRUE, scale=FALSE))
   
-
-
 specimen = strsplit(drug_bug, "-")[[1]][1]
 
-output_dir <- paste0("./model-output/all_one_model_", priorchoice, "_set1_centered/", specimen)
+# Cluster
+#output_dir <- paste0("./model-output/all_one_model_", priorchoice, "_set1_centered/", specimen)
 
 # Local
-#output_dir <- paste0(dirDataModeloutput)  
+output_dir <- here("Output", "Model_output", "AMR_prevalence", priorchoice, specimen) 
 
 # Select the model formula based on the MODEL variable
 model_formula <- switch(MODEL,
@@ -243,7 +289,8 @@ fit = fit_and_save_model(drug_bug,
                          warmup = warmup,
                          iter = iter, 
                          output_dir,
-                         prior_default="no",
-                         prior_cor = "no")
+                         prior_default="no", # Change if want to use default priors from brms
+                         prior_cor = "no") # change if want to fit correlation between random-effects
 
-saveRDS(fit, file = paste0("./model-output/all_", priorchoice,"/models_combined/", spec_db, ".rds"))
+# Check results
+#summary(fit$results$model)

@@ -1,6 +1,35 @@
-#######################################
-# GLASS REPORT - FIGURES
-#######################################
+###################################################################################
+# GLASS REPORT - CHAPTER 2.2 + 2.3 ASSESSING COMPLETENESS OF AMR SURVEILLANCE DATA
+###################################################################################
+
+# Author: Esther van Kleef
+# Date created: 8 July 2024
+# Date latest update: 20 February 2026
+
+# Purpose:
+# Produce data table summary tables and a national-level surveillance completeness heatmap
+# for Chapter 2.2 and 2.3 and  of the GLASS report using curated AMR, population and implementation data.
+#
+# Key action performed by this script:
+# 1. Load in relevant data 
+# - Curated AMR datasets: adataAC, adataAS, adataDM
+# - Population & country metadata: pdata, pdataDM, cdata
+# - Implementation/usage surveys: idata, idata_usage, udata
+# - Reportable drug–bug list (dbdata / combinations2022)
+
+# 2. Defined key decisions / thresholds:
+# - Age/sex/origin missingness threshold: 30% per specimen
+# - Drug–bug considered "reported" if InterpretableAST > 10
+# - Specimen-level "good" reporting if >50% of expected combinations present
+# - Implausible usage values flagged as "not_reliable" before scoring
+#
+# 3. Generate outputs:
+# - Country-level CSV of component scores and TotalScore (dirOutputReport/Chapter 3)
+# - Heatmap (ggplot) of completeness by country/WHO region
+# - Supporting CSVs and figure files used in Chapter 3
+
+# #################################################################################################
+
 rm(list=ls())
 
 # Load R packages
@@ -11,74 +40,53 @@ pacman::p_load(readxl, rio, lubridate, zoo, ggplot2, Hmisc, stringr,dplyr,
                glue, RColorBrewer, scales, svglite, reshape2, forcats)
 
 
-#remotes::install_github("glaziou/whomap")
-
 # Locate directories
-dirDataOld = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/GLASS HISTORICAL DATA EV"
-dirDataNewO = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2025 GLASS REPORT/GLASS_final_curated"
-dirDataNew = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2025 GLASS REPORT/GLASS_final_curated/GLASS_final_curated_linked"
-dirDataRaw = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/FINAL DATA FOR 2025 GLASS REPORT/"
-
-dirOutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2025 ANALYSIS EV/2025 Figures_Tables"
-dirOutputCheck = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2025 ANALYSIS EV/2025 Figures_Tables/2021/"
-dirDataModeloutput = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2025 ANALYSIS EV/2025 Model_output/model_output/ALL/all_one_model_weakip_set1"
-
-dirOutputReport = "C:/Users/esthe/World Health Organization/GLASS Data Visualization - Esther work - GLASS 2024/2025 REPORT WRITING/FINAL 2023 FIGURES TABLES AND RESULTS"
+dirDataRaw   <- here("Data", "raw")
+dirDataClean <- here("Data", "cleaned")
+dirOutput    <- here("Output")
 
 # Load in functions
-source("./0_GLASS_functions.R")
-source("./0_multiplot.R")
+source(here("Scripts", "functions", "GLASS_functions.R"))
+source(here("Scripts", "functions", "multiplot.R"))
+
+# Latest year of analyses
+year = 2023 # change to latest year
 
 ##############################################################
 # LOAD IN DATA
 ##############################################################
 
 # Population data
-pdata = read.csv(paste0(dirDataNewO, "/EI_Popdta_110325_EV.csv"), sep=",")       # Population data
-pdataDM = read.csv(paste0(dirDataNew, "/EI_PopdtaDM_140325_EV.csv"), sep=",")       # Population data
+pdata = read.csv(paste0(dirDataRaw, "/EI_Popdta_110325_EV.csv"), sep=",")       # Population data
+pdataDM = read.csv(paste0(dirDataClean, "/EI_PopdtaDM_140325_EV.csv"), sep=",")       # Population data
 
 # Country data
-cdata = read.csv(paste0(dirDataNew, "/EI_Countrydta_AST_140325_EV.csv"), sep=",")   # Country data
+cdata = read.csv(paste0(dirDataClean, "/EI_Countrydta_AST_140325_EV.csv"), sep=",")   # Country data
 
 # Surveillance indicator data
-idata = read.csv(paste0(dirDataNew,"/EI_Implementationdta_Country_140325_EV.csv"), sep=",")                   # Implementation data
-# Including healthcare usage data
-udata = read.csv(paste0(dirDataNew, "/EI_Implementation_usage_dta_140325_EV.csv"), sep=",")
+idata = read.csv(paste0(dirDataClean,"/final_linked_data/EI_Implementationdta_Country_140325_EV.csv"), sep=",")                   # Implementation data
 
-sdata = read.csv(paste0(dirDataNew, "/EI_SurveillanceSites_140325_EV.csv"), sep=",") # Surveillance sites
+# Including healthcare usage data
+idata_usage = read.csv(paste0(dirDataClean, "/final_linked_data/EI_Implementation_usage_dta_140325_EV.csv"), sep=",")
+
+#sdata = read.csv(paste0(dirDataNew, "/EI_SurveillanceSites_140325_EV.csv"), sep=",") # Surveillance sites
 #idata_old = read.csv(paste0(dirDataOld, "/Final_Curated_Data_GLASS_2023_EV/EI_Implementationdta_071123 EV.csv"), sep=",") # Surveillance sites                   # Implementation data
-idata_usage = read.csv(paste0(dirDataNew,"/EI_Implementation_usage_dta_140325_EV.csv"), sep=",")                   # Implementation data
+#idata_usage = read.csv(paste0(dirDataNew,"/EI_Implementation_usage_dta_140325_EV.csv"), sep=",")                   # Implementation data
 
 # HAQI data
-haqidata = read.csv(paste0(dirDataRaw, "/HAQI_raw/IHME_GBD_2019_HAQ_1990_2019_DATA_Y2022M012D21.csv"), sep=",")
+#haqidata = read.csv(paste0(dirDataRaw, "/HAQI_raw/IHME_GBD_2019_HAQ_1990_2019_DATA_Y2022M012D21.csv"), sep=",")
 
 # AMR data
-#adataAC = read.csv(paste0(dirDataNew, "/EI_AMRdtaAC_Pop_Country_HAQI_030924_EV.csv"), sep=",")   # Country AMR data
-adataAC = read.csv(paste0(dirDataNewO, "/EI_AMRdtaAC_110325_EV.csv"), sep=",")   # Country AMR data; use CRUDE data as wrangled by OLGA, where E.coli and MRSA are not manually changed
-adataDM = read.csv(paste0(dirDataNew, "/EI_AMRdtaDM_Country_140325_EV.csv"), sep=",")   # Country AMR data
-#adataNT = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_Pop_Country_030924_EV.csv"), sep=",")   # Country AMR data
-adataAS = read.csv(paste0(dirDataNew, "/EI_AMRdtaINT_ANALYSES.csv"), sep=",")   # Country AMR data
+adataAC = read.csv(paste0(dirDataRaw, "/EI_AMRdtaAC_110325_EV.csv"), sep=",")   # Country AMR data; use CRUDE data as wrangled by OLGA, where E.coli and MRSA are not manually changed
+adataDM = read.csv(paste0(dirDataClean, "/EI_AMRdtaDM_Country_140325_EV.csv"), sep=",")   # Country AMR data
+adataAS = read.csv(paste0(dirDataClean, "/final_linked_data/EI_AMRdtaINT_ANALYSES.csv"), sep=",")   # Country AMR data
 
 # List of drug bug combinations
-dbdata = read.csv(paste0(dirDataNew, "./updated_summary_dbc_longformat.csv"), sep=",")
-
-# EAR data
-#edata = read_excel(paste0(dirDataNew, "/EAR_events_2019_2024_EV.xlsx"))
-
-# rrates 2021
-# rrates2021 = read_excel(paste0(dirOutputCheck, "/rrates_2021_75percentile.xlsx")) 
-# rrates2021 = rrates2021%>% filter(Q1!="NA") %>% mutate(
-#   Q1 = as.numeric(Q1),
-#   Q3 = as.numeric(Q3),
-#   median = as.numeric(median)
-# )
+dbdata = read.csv(paste0(dirDataClean, "/updated_summary_dbc_longformat.csv"), sep=",")
 
 # Drug bug combinations to include in report
 combinations2022 = dbdata %>% 
   mutate(combined = paste0(Specimen,"-", PathogenName,"-", AntibioticName))
-
-# Bed density
-#bdays = read.csv(paste0(dirDataNewO, "/EI_BedDensitydta_180724_EV.csv"), sep=",")
 
 year = 2023 # CHANGE TO YEAR OF GLASS DATA BEING ANALYSED
 
@@ -93,18 +101,13 @@ adataAC = left_join(adataAC, pdata)
 # NATIONAL SURVEILLANCE SYSTEM INDICATORS
 #--------------------------------------------------------------------------------------------------
 
-f1 = read.csv(paste0(dirDataNewO, "/EI_Implementationdta_110325_EV.csv"), header=T)
+# The below file was generated by Olga Tosas seperately, so loaded in here directly from the 'raw' folder.
+# This is the latest Implementation data file
+# However, the numbers in EI_Implementationdta_Country_140325_EV.csv are the same (see 1_Data_wrangling.R script lines 807-892)
 
-#f1<-read.csv("C:\\Users\\tosaso\\OneDrive - World Health Organization\\WHO_WORK\\R_DATA_WHO\\GLASS_AMR_WHO\\GLASS_2024_FILES\\FINAL CURATED GLASS 2024 DATA\\EI_Implementationdta_280824.csv", header=T)
-#attach(f1)
-#fix(f1)
-
-f2 = read.csv(paste0(dirDataNewO, "/EI_Countrydta_110325_EVK.csv"), header=T)
-
-#f2<-read.csv("C:\\Users\\tosaso\\OneDrive - World Health Organization\\WHO_WORK\\R_DATA_WHO\\GLASS_AMR_WHO\\GLASS_2024_FILES\\FINAL CURATED GLASS 2024 DATA\\EI_Countrydta_180724.csv", header=T)
-#attach(f2)
-#fix(f2)
-
+f1 = read.csv(paste0(dirDataRaw, "/EI_Implementationdta_110325_EV.csv"), header=T)
+ 
+f2 = read.csv(paste0(dirDataRaw, "/EI_Countrydta_110325_EVK.csv"), header=T)
 
 f2 = f2[order(f2$Iso3),] %>%
   mutate(
@@ -169,13 +172,13 @@ colB_nssi$colB_nssi[colB_nssi$Iso3=="STP"] = 1
 # NATIONAL HEALTH INFRASTRUCTURE SUMMARIES INPATIENT
 #----------------------------------------------------------------------------
 
-  # ColC_infs_inp: infrastructure summaries inpatient, i.e. amr_amr_hospital_number + amr_amr_acute_care_number
-  # ColD_util_inp: infrastructure summaries inpatient, i.e. amr_amr_inpatient_adm_number + amr_amr_inpatient_day_number
-  # ColE_util_outp: infrastructure summaries inpatient, i.e. amr_amr_outpatient_cons_number
-  # ColF_GLASS_infs_inp: infrastructure summaries inpatient, i.e. amr_glass_hospital_number + amr_glass_acute_care_number
-  # ColG_GLASS_util_inp: infrastructure summaries inpatient, i.e. amr_glass_inpatient_adm_number + amr_glass_inpatient_day_number
-  # ColH_GLASS_util_outp: infrastructure summaries inpatient, i.e. amr_glass_outpatient_cons_number
-  # ColI_dashb: 
+# ColC_infs_inp: infrastructure summaries inpatient, i.e. amr_amr_hospital_number + amr_amr_acute_care_number
+# ColD_util_inp: infrastructure summaries inpatient, i.e. amr_amr_inpatient_adm_number + amr_amr_inpatient_day_number
+# ColE_util_outp: infrastructure summaries inpatient, i.e. amr_amr_outpatient_cons_number
+# ColF_GLASS_infs_inp: infrastructure summaries inpatient, i.e. amr_glass_hospital_number + amr_glass_acute_care_number
+# ColG_GLASS_util_inp: infrastructure summaries inpatient, i.e. amr_glass_inpatient_adm_number + amr_glass_inpatient_day_number
+# ColH_GLASS_util_outp: infrastructure summaries inpatient, i.e. amr_glass_outpatient_cons_number
+# ColI_dashb: 
 
 u1 = idata_usage
 
@@ -538,7 +541,7 @@ length(unique(k6$Iso3)) # 130 CTAs
 k7 = left_join(k6, cdata %>% dplyr::select(Iso3, WHORegionName))
 k7[,c(2:17)] = sapply(k7[,c(2:17)], function(x) ifelse(is.na(x), 0, x))
 
-write.csv(k7, file = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Figure_3.5_missingdata_NEW2.csv"))
+write.csv(k7, file = paste0(dirOutput, "/Annexes/A_summary_stats/Figure_missingdata.csv"))
 
 c2 <- k6 %>%
   pivot_longer(-Iso3, names_to = "Category", values_to = "Value") %>%
@@ -710,24 +713,3 @@ p = ggplot(c3, aes(x = Category, y = fct_rev(fct_reorder(CountryTerritoryArea2, 
 p
 
 
-# CHECK AFTER CHANGE OF SCORE FOR OUTPATIENT
-# -------------------------------------------------------------
-# f1 = read.csv(file = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Figure_3.5_missingdata.csv"))
-# 
-# f_old = readxl::read_xlsx(path = paste0(dirOutputReport, "/Chapter 3/Ch3 summary stats/Figure_3.5_missingdata_definitions.xlsx"),sheet=1)
-# names(f_old)
-# f_old = f_old %>% select(-c("...1"))
-# f1= f1 %>% select(-c("X"))
-# 
-# f_old[,c(2:17)] = sapply(f_old[,c(2:17)], function(x) as.numeric(x))
-# f1[,c(2:17)] = sapply(f1[,c(2:17)], function(x) as.numeric(x))
-# 
-# 
-# table(f1$colE_util_outp)
-# table(f1$ColH_GLASS_util_outp)
-# 
-# table(f_old$colE_util_outp)
-# table(f_old$ColH_GLASS_util_outp)
-# 
-# library(diffdf)
-# diffdf(f1, f_old)
