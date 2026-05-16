@@ -6,9 +6,9 @@ The Global Antimicrobial Resistance and Use Surveillance System (GLASS) 2025 rep
 
 Drawing on over 23 million infections reported by 104 countries, the report estimates resistance to 22 antibiotics in eight priority bacterial pathogens across four major infection types. 
 
-By adjusting for population structure and surveillance coverage, these analyses attempt to offer a more robust global picture of AMR trends (Chapter 3). 
+The report introduces a framework to assess the maturity and completeness of national surveillance systems, supporting global efforts to strengthen AMR monitoring and response (Chapter 2).
 
-The report also introduces a framework to assess the maturity and completeness of national surveillance systems, supporting global efforts to strengthen AMR monitoring and response (Chapter 2).
+In addition, by adjusting for population structure and surveillance coverage, the report presents analyses that attempt to offer a more robust global picture of AMR trends (Chapter 3). 
 
 ## Repository workflow
 The repository follows the analytical workflow used in the report.
