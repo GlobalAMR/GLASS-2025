@@ -5,8 +5,8 @@ Code supporting the statistical analyses for the WHO Global Antimicrobial Resist
 - WHO GLASS 2025 report - Summary:
   https://www.who.int/publications/i/item/B09585
 
-- WHO GLASS 2025 report, including methodological description in Annex 1:
-  Statistical methods and modelling framework: https://www.who.int/publications/i/item/9789240116337/)
+- WHO GLASS 2025 report, including a description of statistical methods and modelling framework (Annex 1):
+  https://www.who.int/publications/i/item/9789240116337/)
   
 - WHO GLASS initiative:  
   https://www.who.int/initiatives/glass
