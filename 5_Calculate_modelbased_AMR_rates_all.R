@@ -5,6 +5,39 @@
 # Author: Esther van Kleef
 # Date last updated: 04 March 2026
 
+# Purpose
+# This script takes the selected AMR prevalence models and calculates
+# age- and sex-weighted country-, regional-, and global prevalence estimates
+# for each drug–bug combination, then summarises temporal trends and slopes.
+#
+# Key steps
+# - Load population, country, AMR, and model-comparison inputs.
+# - Relevel AgeCat10 and merge testing cut-off information into `adataAS`.
+# - Define plotting colours and helper functions.
+# - Read the fitted model objects and best-model table.
+# - Predict age- and sex-specific prevalences for each best model.
+# - Weight posterior predictions by population to obtain country estimates.
+# - Aggregate country estimates to regional and global prevalence using
+#   inverse-variance weighting on the logit scale.
+# - Identify countries contributing data in 2023 and flag overlap/change
+#   between 2018 and 2023.
+# - Estimate regional and global slope changes from the fitted models.
+# - Create heatmaps and trend plots, and export summary CSV tables.
+#
+# Main outputs
+# - CTA_w_prev_*.csv
+# - CTA_w_prev_all.csv
+# - Figure_3.12_REGION_prevalence_allyears.csv
+# - Figure_3.12_REGION_trends_2023change.csv
+# - Figure_4.12_REGION_prevalence_slope.csv
+#
+# Notes
+# - Countries with limited data are filtered using the minimum years / 2023
+#   submission rules.
+# - Regional estimates are calculated manually on the logit scale with
+#   between-country heterogeneity (tau2).
+#################################################################
+
 rm(list=ls())
 
 # Load R packages

@@ -9,38 +9,49 @@
 # Date created: 21 August 2024
 # Date last updated: 02 March 2026
 
+############################################################################
+# CALCULATE REGIONAL AMR SLOPES AND TRENDS
+############################################################################
+
+# Author: Esther van Kleef
+# Date created: September 2024
+# Date last updated: 3 March 2026
+
 # Purpose
-# This script fits Bayesian hierarchical binomial (logit) models to estimate
-# antimicrobial resistance (AMR) prevalence for specified drug–bug combinations
-# (specimen, pathogen, antibiotic). 
+# This script calculates regional and global AMR slope estimates and trend
+# summaries from the fitted prevalence models, and produces the figures and
+# tables used in the report.
 
-# It supports:
-# - Running multiple model specifications (model0c–model3c), 
-# - computing approximate out-of-sample
-# - fit (LOO), and saving fitted models and diagnostics for later model comparison.
+# Key steps
+# - Load population, country, AMR, and model-comparison inputs.
+# - Relevel AgeCat10 and prepare the testing cut-off data.
+# - Read the best model table and fitted model objects.
+# - Estimate regional and global slope changes for each selected drug–bug
+#   combination using posterior draws from the fitted models.
+# - Summarise slopes on the percentage-change scale and flag significant
+#   trends.
+# - Count countries and isolates contributing to each estimate, including
+#   totals and 3-year subsets.
+# - Create heatmaps and regional trend plots for reporting.
+
+# Inputs
+# - Population data: EI_Popdta_110325_EV.csv, EI_PopdtaDM_140325_EV.csv
+# - Country metadata: EI_Countrydta_AST_140325_EV.csv
+# - AMR datasets: EI_AMRdtaAC_Pop_country_HAQI_140325_EV.csv,
+#   EI_AMRdtaINT_ANALYSES.csv
+# - Drug–bug lookup table: updated_summary_dbc_longformat.csv
+# - Best model table: best_model_fit_all.csv
+# - Fitted model objects: model_fits_*_wp.rds
+# - Prevalence estimates table: CTA_w_prev_all.csv
+
+# Outputs
+# - Figure_3.12_REGION_prevalence_slope_UPDATED_2.csv
+# - Figure_4.11_trend_regional_amr_UPDATED.png
+# - Figure_4.11_trend_regional_amr_BSI_nodecline_UPDATED.png
+# - Figure_3.12_trend_kpn_UPDATED.png
+# - Figure_4.11_REGION_trends_allyears.csv-derived summaries
 #
-# Key features of four models:
-# - Multi-level structure: 
-#   * country-level random intercepts and random slopes for Year (and optionally AgeCat10) to capture between-country heterogeneity.
-#   * Fixed effects include Year (centered), demographic covariates (AgeCat10, Sex) and a quadratic term for testing coverage (st_BCI_million_imp).
-# - Weakly informative priors are provided by default with options to include LKJ priors on random-effect correlations.
-# - Uses brms (NUTS/HMC) for Bayesian estimation and loo for model comparison.
-#
-# Inputs (local): 
-# - Data: cleaned CSV files under Data/cleaned (see dirDataClean). 
-#   * dbdata: drug–bug lookup and numbering (updated_summary_dbc_longformat.csv)
-#   * adataAS, adataAC, adataDM, adataNT: curated AMR datasets (see file names)
-
-# Typical outputs (Output/Model_output/AMR_prevalence/<prior>/<specimen>/):
-# - <drugbug>_<MODEL>_fit.rds      : saved brms fit object
-# - <drugbug>_<MODEL>_loo.rds      : loo object for model comparison
-
-# Usage notes:
-# - Run interactively: set dbnum and MODEL at top of script (examples provided).
-# - Run on cluster: supply SLURM_ARRAY_TASK_ID and MODEL via environment variables.
-# - Tuning: adjust iter, warmup, adapt_delta, and max_treedepth via control list
-#   if divergent transitions or high Rhat values (>1.05–1.1) occur.
-# - Center Year before fitting to improve random-slope / intercept identifiability.
+############################################################################
 
 rm(list=ls())
 
