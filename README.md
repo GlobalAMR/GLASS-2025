@@ -1,16 +1,6 @@
 # GLASS-2025
 Code supporting the statistical analyses for the WHO Global Antimicrobial Resistance and Use Surveillance System (GLASS) 2025 report.
 
-## References
-- WHO GLASS 2025 report (summary):
-  https://www.who.int/publications/i/item/B09585
-
-- WHO GLASS 2025 report (full), including a description of statistical methods and modelling framework (Annex 1):
-  https://www.who.int/publications/i/item/9789240116337/)
-  
-- WHO GLASS initiative:  
-  https://www.who.int/initiatives/glass
-
 ## 2025 GLASS report - Summary 
 The Global Antimicrobial Resistance and Use Surveillance System (GLASS) 2025 report provides standardized, model-based estimates of antimicrobial resistance across countries and regions. 
 
@@ -21,7 +11,6 @@ By adjusting for population structure and surveillance coverage, these analyses 
 The report also introduces a framework to assess the maturity and completeness of national surveillance systems, supporting global efforts to strengthen AMR monitoring and response (Chapter 2).
 
 ## Repository workflow
-
 The repository follows the analytical workflow used in the report.
 
 | Step | File | Description |
@@ -36,6 +25,14 @@ The repository follows the analytical workflow used in the report.
 | 5 | `5_Calculate_modelbased_AMR_rates_all.R` | Estimation of national and regional percentage resistance by infection type, pathogen and antibiotic combinations in 2023 (Section 3.1 - 3.4)  |
 | 5 | `5_Calculate_modelbased_AMR_trends.R` | Estimation of national and regional percentage resistance by infection type, pathogen and antibiotic combinations over time (Section 3.5) |
 
+## References
+- WHO GLASS 2025 report (summary):
+  https://www.who.int/publications/i/item/B09585
 
+- WHO GLASS 2025 report (full), including a description of statistical methods and modelling framework (Annex 1):
+  https://www.who.int/publications/i/item/9789240116337/)
+  
+- WHO GLASS initiative:  
+  https://www.who.int/initiatives/glass
 
 
