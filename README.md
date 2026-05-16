@@ -2,10 +2,10 @@
 Code supporting the statistical analyses for the WHO Global Antimicrobial Resistance and Use Surveillance System (GLASS) 2025 report.
 
 ## References
-- WHO GLASS 2025 report:
+- WHO GLASS 2025 report - Summary:
   https://www.who.int/publications/i/item/B09585
 
-- Annex 1:
+- WHO GLASS 2025 report, including methodological description in Annex 1:
   Statistical methods and modelling framework: https://www.who.int/publications/i/item/9789240116337/)
   
 - WHO GLASS initiative:  
